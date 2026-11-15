@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingBag, ShieldCheck, Lock, Search } from 'lucide-react';
+import { ShoppingBag, ShieldCheck, Lock, Search, Bell } from 'lucide-react';
 import { DiamondLogo } from './DiamondLogo';
 import { DistrictId } from '../types';
 
@@ -8,6 +8,8 @@ interface HeaderProps {
   onOpenCart: () => void;
   ownerMode: boolean;
   onToggleOwnerMode: () => void;
+  adminUnreadCount: number;
+  onOpenAdminNotifications: () => void;
   activeDistrict: DistrictId | 'all';
   onSelectDistrict: (districtId: DistrictId | 'all') => void;
   searchQuery: string;
@@ -20,6 +22,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenCart,
   ownerMode,
   onToggleOwnerMode,
+  adminUnreadCount,
+  onOpenAdminNotifications,
   activeDistrict,
   onSelectDistrict,
   searchQuery,
@@ -63,8 +67,24 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Right Actions: Admin Login Toggle & Cart Button */}
+          {/* Right Actions: Admin Notifications (only when ownerMode), Admin Login Toggle & Cart Button */}
           <div className="flex items-center gap-2.5">
+            {ownerMode && (
+              <button
+                onClick={onOpenAdminNotifications}
+                className="relative flex items-center justify-center p-2 rounded-lg bg-[#0a1435] hover:bg-blue-900/40 border border-amber-500/40 text-amber-300 transition-colors cursor-pointer"
+                title="Зургийн мэдэгдэл (Зөвхөн Админ)"
+                aria-label="Админ мэдэгдэл"
+              >
+                <Bell className="w-4 h-4" />
+                {adminUnreadCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[17px] h-[17px] px-1 flex items-center justify-center bg-amber-400 text-slate-950 text-[10px] font-black rounded-full">
+                    {adminUnreadCount}
+                  </span>
+                )}
+              </button>
+            )}
+
             <button
               onClick={onToggleOwnerMode}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${

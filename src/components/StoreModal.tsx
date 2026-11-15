@@ -8,6 +8,7 @@ interface StoreModalProps {
   onClose: () => void;
   onAddToCart: (item: StoreItem, store: Store, quantity: number) => void;
   ownerMode: boolean;
+  maxItemsPerStore: number;
   onAddNewItem: (store: Store) => void;
   onEditItem: (store: Store, item: StoreItem) => void;
   onDeleteItem: (store: Store, itemId: string) => void;
@@ -19,6 +20,7 @@ export const StoreModal: React.FC<StoreModalProps> = ({
   onClose,
   onAddToCart,
   ownerMode,
+  maxItemsPerStore,
   onAddNewItem,
   onEditItem,
   onDeleteItem,
@@ -26,8 +28,11 @@ export const StoreModal: React.FC<StoreModalProps> = ({
 }) => {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [addedItemNotice, setAddedItemNotice] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   if (!store) return null;
+
+  const isStoreFull = store.items.length >= maxItemsPerStore;
 
   const getItemQty = (itemId: string): number => {
     return quantities[itemId] ?? 1;
@@ -60,19 +65,26 @@ export const StoreModal: React.FC<StoreModalProps> = ({
       {/* Main Container */}
       <div className="relative w-full max-w-4xl bg-[#070e20] rounded-xl border border-slate-800 shadow-2xl z-10 flex flex-col max-h-[90vh] overflow-hidden">
         {/* Simple Clean Header */}
-        <div className="p-4 bg-[#091228] border-b border-slate-800 flex items-center justify-between">
-          <h2 className="font-cinzel text-xl font-bold text-slate-100">
-            {store.name}
-          </h2>
+        <div className="p-4 bg-[#091228] border-b border-slate-800 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <h2 className="font-cinzel text-xl font-bold text-slate-100 truncate">
+              {store.name}
+            </h2>
+            <span className="text-[11px] px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300 shrink-0">
+              {store.items.length} / {maxItemsPerStore} бараа
+            </span>
+          </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             {ownerMode ? (
               <button
                 onClick={() => onAddNewItem(store)}
-                className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs flex items-center gap-1 cursor-pointer"
+                disabled={isStoreFull}
+                title={isStoreFull ? `Энэ дэлгүүрийн ${maxItemsPerStore} барааны багтаамж дүүрсэн байна` : 'Бараа нэмэх'}
+                className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-amber-300 border border-slate-700 text-xs flex items-center gap-1 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>Бараа нэмэх</span>
+                <span>{isStoreFull ? 'Багтаамж дүүрсэн' : 'Бараа нэмэх'}</span>
               </button>
             ) : (
               <button
@@ -137,20 +149,44 @@ export const StoreModal: React.FC<StoreModalProps> = ({
                       />
                       {ownerMode && (
                         <div className="absolute top-2 right-2 flex gap-1">
-                          <button
-                            onClick={() => onEditItem(store, item)}
-                            className="p-1 rounded bg-black/70 hover:bg-slate-800 text-white cursor-pointer"
-                            title="Засах"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                          </button>
-                          <button
-                            onClick={() => onDeleteItem(store, item.id)}
-                            className="p-1 rounded bg-black/70 hover:bg-red-800 text-white cursor-pointer"
-                            title="Устгах"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
+                          {confirmDeleteId === item.id ? (
+                            <div className="flex items-center gap-1 bg-black/85 border border-red-500/60 rounded px-1.5 py-0.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setConfirmDeleteId(null);
+                                  onDeleteItem(store, item.id);
+                                }}
+                                className="text-[10px] font-bold text-red-400 hover:text-red-300 px-1 cursor-pointer"
+                              >
+                                Устгах
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="text-[10px] text-slate-300 hover:text-white px-1 cursor-pointer"
+                              >
+                                Болих
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => onEditItem(store, item)}
+                                className="p-1 rounded bg-black/70 hover:bg-slate-800 text-white cursor-pointer"
+                                title="Засах"
+                              >
+                                <Edit2 className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteId(item.id)}
+                                className="p-1 rounded bg-black/70 hover:bg-red-800 text-white cursor-pointer"
+                                title="Устгах"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>

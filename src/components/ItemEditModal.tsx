@@ -44,7 +44,7 @@ async function compressImageFile(file: File): Promise<string> {
       const img = new Image();
       img.onerror = () => reject(new Error('Зургийг нээхэд алдаа гарлаа'));
       img.onload = () => {
-        const MAX_DIM = 800;
+        const MAX_DIM = 640;
         let width = img.width;
         let height = img.height;
 
@@ -68,10 +68,10 @@ async function compressImageFile(file: File): Promise<string> {
         }
         ctx.drawImage(img, 0, 0, width, height);
 
-        let quality = 0.78;
+        let quality = 0.70;
         let compressed = canvas.toDataURL('image/jpeg', quality);
-        while (compressed.length > 550000 && quality > 0.35) {
-          quality -= 0.12;
+        while (compressed.length > 120000 && quality > 0.32) {
+          quality -= 0.08;
           compressed = canvas.toDataURL('image/jpeg', quality);
         }
         resolve(compressed);

@@ -56,12 +56,28 @@ service cloud.firestore {
         data.updatedAt is timestamp;
     }
 
+    function isValidCatalogMeta(data) {
+      return data.keys().hasAll(['version', 'lastActionId', 'updatedAt']) &&
+        data.keys().hasOnly(['version', 'lastActionId', 'updatedAt']) &&
+        data.version is number && data.version > 0 &&
+        isValidId(data.lastActionId) &&
+        data.updatedAt == request.time;
+    }
+
     function hasValidAtomicAdminAction(itemId, expectedAction) {
       return isValidId(incoming().lastActionId) &&
         !exists(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)) &&
         existsAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)) &&
         getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.itemId == itemId &&
         getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.action == expectedAction &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.code == '54PPH1R3' &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.createdAt == request.time;
+    }
+
+    function hasValidMetaAtomicAdminAction() {
+      return isValidId(incoming().lastActionId) &&
+        !exists(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)) &&
+        existsAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)) &&
         getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.code == '54PPH1R3' &&
         getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.createdAt == request.time;
     }
@@ -75,6 +91,14 @@ service cloud.firestore {
     match /admins/{adminUid} {
       allow get: if isSignedIn() && request.auth.uid == adminUid;
       allow list, write: if false;
+    }
+
+    match /meta/{docId} {
+      allow get: if docId == 'catalog';
+      allow list, delete: if false;
+      allow create, update: if docId == 'catalog' &&
+        isValidCatalogMeta(incoming()) &&
+        (isAdmin() || hasValidMetaAtomicAdminAction());
     }
 
     match /items/{itemId} {

@@ -14,6 +14,10 @@ import {
 } from './utils/storeStorage';
 import {
   ADMIN_ACCESS_CODE,
+  MAX_ITEMS_PER_STORE,
+  FIRESTORE_UPGRADE_URL,
+  getCachedItems,
+  getCachedItemsAsync,
   subscribeToItems,
   createStoreItemInFirestore,
   updateStoreItemInFirestore,
@@ -25,16 +29,34 @@ import { MansionCard } from './components/MansionCard';
 import { StoreModal } from './components/StoreModal';
 import { ItemEditModal } from './components/ItemEditModal';
 import { AdminLoginModal } from './components/AdminLoginModal';
+import {
+  AdminNotificationsModal,
+  AdminNotificationEntry,
+} from './components/AdminNotificationsModal';
 import { CartDrawer } from './components/CartDrawer';
 import { ChequeModal } from './components/ChequeModal';
 import { DiamondLogo } from './components/DiamondLogo';
 import { Sparkles, ArrowUp } from 'lucide-react';
 
 const CART_STORAGE_KEY = 'sapphirely_cart_v1';
+const ADMIN_SEEN_IDS_KEY = 'sapphirely_admin_seen_ids_v1';
+
+function getInitialSeenIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(ADMIN_SEEN_IDS_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? new Set(parsed.filter((v) => typeof v === 'string')) : new Set();
+  } catch {
+    return new Set();
+  }
+}
 
 export default function App() {
-  const [cloudItems, setCloudItems] = useState<StoreItem[]>([]);
+  const [cloudItems, setCloudItems] = useState<StoreItem[]>(() => getCachedItems());
   const [isLoadingItems, setIsLoadingItems] = useState<boolean>(true);
+  const [quotaExceeded, setQuotaExceeded] = useState<boolean>(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [adminCode, setAdminCode] = useState<string | null>(null);
   const [senderName, setSenderName] = useState<string>('Эрхэм худалдан авагч');
@@ -48,6 +70,19 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [isChequeOpen, setIsChequeOpen] = useState<boolean>(false);
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState<boolean>(false);
+  const [isAdminNotifOpen, setIsAdminNotifOpen] = useState<boolean>(false);
+
+  // Admin notification state
+  const [seenItemIds, setSeenItemIds] = useState<Set<string>>(() => getInitialSeenIds());
+  const [browserNotifPermission, setBrowserNotifPermission] = useState<
+    NotificationPermission | 'unsupported'
+  >(() =>
+    typeof window !== 'undefined' && 'Notification' in window
+      ? window.Notification.permission
+      : 'unsupported'
+  );
+  const knownItemIdsRef = useRef<Set<string>>(new Set(getCachedItems().map((i) => i.id)));
+  const hasHydratedInitialItemsRef = useRef<boolean>(false);
 
   // Admin Item Edit modal state
   const [isItemEditOpen, setIsItemEditOpen] = useState<boolean>(false);
@@ -60,6 +95,14 @@ export default function App() {
   const mansionsRef = useRef<HTMLDivElement>(null);
 
   const ownerMode = adminCode === ADMIN_ACCESS_CODE;
+
+  const storeNameMap = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    INITIAL_STORES.forEach((s) => {
+      map[s.id] = s.name;
+    });
+    return map;
+  }, []);
 
   // Combine static store directory with live Firestore items
   const stores = useMemo<Store[]>(() => {
@@ -82,12 +125,48 @@ export default function App() {
     return stores.find((s) => s.id === activeStoreId) || null;
   }, [stores, activeStoreId]);
 
+  const adminNotifications = useMemo<AdminNotificationEntry[]>(() => {
+    if (!ownerMode) return [];
+    return [...cloudItems]
+      .sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0))
+      .map((item) => ({
+        item,
+        storeName: storeNameMap[item.storeId] || item.storeId,
+        isUnread: !seenItemIds.has(item.id),
+      }));
+  }, [ownerMode, cloudItems, storeNameMap, seenItemIds]);
+
+  const adminUnreadCount = useMemo(
+    () => adminNotifications.filter((n) => n.isUnread).length,
+    [adminNotifications]
+  );
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3200);
   };
 
-  // Subscribe to real-time Firestore items & restore local session preferences
+  const notifyAdminOfNewItem = (item: StoreItem) => {
+    if (!ownerMode) return;
+    const storeLabel = storeNameMap[item.storeId] || item.storeId;
+    showToast(`Шинэ зураг нэмэгдлээ (${storeLabel}): ${item.name}`);
+
+    if (
+      typeof window !== 'undefined' &&
+      'Notification' in window &&
+      window.Notification.permission === 'granted'
+    ) {
+      try {
+        new window.Notification(`Sapphirely — ${storeLabel}`, {
+          body: `Шинэ барааны зураг нэмэгдлээ: ${item.name} (${item.priceCoins.toLocaleString()} Зоос)`,
+        });
+      } catch {
+        // Ignore browser notification constructor errors
+      }
+    }
+  };
+
+  // Subscribe to version-gated Firestore items & restore local session preferences
   useEffect(() => {
     const savedCode = getStoredAdminCode();
     if (savedCode === ADMIN_ACCESS_CODE) {
@@ -110,14 +189,59 @@ export default function App() {
       // Ignore corrupt local cart
     }
 
+    void getCachedItemsAsync().then((idbItems) => {
+      if (idbItems.length > 0) {
+        setCloudItems(idbItems);
+        idbItems.forEach((it) => knownItemIdsRef.current.add(it.id));
+      }
+    });
+
     const unsubscribe = subscribeToItems(
       (items) => {
+        if (hasHydratedInitialItemsRef.current) {
+          const newlyAdded = items.filter((it) => !knownItemIdsRef.current.has(it.id));
+          if (newlyAdded.length > 0 && getStoredAdminCode() === ADMIN_ACCESS_CODE) {
+            const latest = newlyAdded[0];
+            const storeLabel =
+              INITIAL_STORES.find((s) => s.id === latest.storeId)?.name || latest.storeId;
+            setToastMessage(
+              newlyAdded.length === 1
+                ? `Шинэ зураг нэмэгдлээ (${storeLabel}): ${latest.name}`
+                : `${newlyAdded.length} шинэ барааны зураг нэмэгдлээ`
+            );
+            setTimeout(() => setToastMessage(null), 3500);
+            if (
+              typeof window !== 'undefined' &&
+              'Notification' in window &&
+              window.Notification.permission === 'granted'
+            ) {
+              try {
+                new window.Notification(`Sapphirely — ${storeLabel}`, {
+                  body:
+                    newlyAdded.length === 1
+                      ? `Шинэ барааны зураг нэмэгдлээ: ${latest.name}`
+                      : `${newlyAdded.length} шинэ барааны зураг нэмэгдлээ`,
+                });
+              } catch {
+                // Ignore
+              }
+            }
+          }
+        }
+        knownItemIdsRef.current = new Set(items.map((i) => i.id));
+        hasHydratedInitialItemsRef.current = true;
+
         setCloudItems(items);
         setIsLoadingItems(false);
+        setQuotaExceeded(false);
       },
-      () => {
+      (_err, isQuota) => {
         setIsLoadingItems(false);
-        showToast('Өгөгдлийн сантай холбогдоход алдаа гарлаа.');
+        if (isQuota) {
+          setQuotaExceeded(true);
+        } else {
+          showToast('Өгөгдлийн сантай холбогдоход алдаа гарлаа.');
+        }
       }
     );
 
@@ -133,10 +257,34 @@ export default function App() {
     }
   }, [cart]);
 
+  const handleRequestBrowserNotifications = async () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setBrowserNotifPermission('unsupported');
+      return;
+    }
+    try {
+      const perm = await window.Notification.requestPermission();
+      setBrowserNotifPermission(perm);
+    } catch {
+      // Ignore
+    }
+  };
+
+  const handleMarkAllAdminNotifsRead = () => {
+    const allIds = new Set(cloudItems.map((i) => i.id));
+    setSeenItemIds(allIds);
+    try {
+      localStorage.setItem(ADMIN_SEEN_IDS_KEY, JSON.stringify(Array.from(allIds)));
+    } catch {
+      // Ignore
+    }
+  };
+
   const handleToggleOwnerMode = () => {
     if (ownerMode) {
       setAdminCode(null);
       setStoredAdminCode(null);
+      setIsAdminNotifOpen(false);
       showToast('Админ эрхээс гарлаа');
     } else {
       setIsAdminLoginOpen(true);
@@ -207,6 +355,10 @@ export default function App() {
       setIsAdminLoginOpen(true);
       return;
     }
+    if (store.items.length >= MAX_ITEMS_PER_STORE) {
+      showToast(`Энэ дэлгүүрт хамгийн ихдээ ${MAX_ITEMS_PER_STORE} бараа багтах боломжтой.`);
+      return;
+    }
     setEditingStore(store);
     setEditingItem(null);
     setIsItemEditOpen(true);
@@ -241,10 +393,19 @@ export default function App() {
 
     if (itemId) {
       await updateStoreItemInFirestore(itemId, itemData, adminCode);
+      setCloudItems((prev) =>
+        prev.map((it) => (it.id === itemId ? { ...it, ...itemData } : it))
+      );
       showToast('Барааны мэдээлэл амжилттай шинэчлэгдлээ');
     } else {
-      await createStoreItemInFirestore(storeId, itemData, adminCode);
-      showToast('Шинэ бараа өгөгдлийн санд бүрэн хадгалагдлаа');
+      const targetStore = stores.find((s) => s.id === storeId);
+      if (targetStore && targetStore.items.length >= MAX_ITEMS_PER_STORE) {
+        throw new Error(`Энэ дэлгүүр дээр ${MAX_ITEMS_PER_STORE} барааны багтаамж дүүрсэн байна.`);
+      }
+      const createdItem = await createStoreItemInFirestore(storeId, itemData, adminCode);
+      knownItemIdsRef.current.add(createdItem.id);
+      setCloudItems((prev) => [createdItem, ...prev.filter((i) => i.id !== createdItem.id)]);
+      notifyAdminOfNewItem(createdItem);
     }
   };
 
@@ -253,14 +414,13 @@ export default function App() {
       setIsAdminLoginOpen(true);
       return;
     }
-    if (window.confirm('Энэ барааг өргөөнөөс хасахдаа итгэлтэй байна уу?')) {
-      try {
-        await deleteStoreItemInFirestore(itemId, adminCode);
-        setCart((prev) => prev.filter((c) => c.item.id !== itemId));
-        showToast('Бараа амжилттай устгагдлаа');
-      } catch {
-        showToast('Бараа устгах үед алдаа гарлаа');
-      }
+    try {
+      await deleteStoreItemInFirestore(itemId, adminCode);
+      setCloudItems((prev) => prev.filter((it) => it.id !== itemId));
+      setCart((prev) => prev.filter((c) => c.item.id !== itemId));
+      showToast('Бараа амжилттай устгагдлаа');
+    } catch {
+      showToast('Бараа устгах үед алдаа гарлаа');
     }
   };
 
@@ -300,6 +460,8 @@ export default function App() {
         onOpenCart={() => setIsCartOpen(true)}
         ownerMode={ownerMode}
         onToggleOwnerMode={handleToggleOwnerMode}
+        adminUnreadCount={adminUnreadCount}
+        onOpenAdminNotifications={() => setIsAdminNotifOpen(true)}
         activeDistrict={activeDistrict}
         onSelectDistrict={(id) => {
           setActiveDistrict(id);
@@ -319,7 +481,7 @@ export default function App() {
         className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-12 md:py-16 space-y-12"
       >
         {/* Section Header */}
-        <div className="pb-3 border-b border-blue-900/60 flex items-center justify-between">
+        <div className="pb-3 border-b border-blue-900/60 flex items-center justify-between gap-4">
           <h2 className="font-cinzel text-xl sm:text-2xl font-bold text-white">
             Саффир улсын нийт худалдааны байгууллагууд
           </h2>
@@ -327,6 +489,22 @@ export default function App() {
             <span className="text-xs text-slate-400">Бараа ачаалж байна...</span>
           )}
         </div>
+
+        {quotaExceeded && (
+          <div className="p-3.5 rounded-lg bg-amber-950/40 border border-amber-700/50 text-xs text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <span>
+              Өдрийн үнэгүй унших лимит (Firestore free daily read quota) дууссан тул кэшэд хадгалагдсан барааг харуулж байна. Маргааш автоматаар шинэчлэгдэнэ.
+            </span>
+            <a
+              href={FIRESTORE_UPGRADE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline font-semibold text-amber-300 hover:text-amber-200 whitespace-nowrap"
+            >
+              Firebase сан шалгах →
+            </a>
+          </div>
+        )}
 
         {/* Grouped by District */}
         {DISTRICTS.map((district) => {
@@ -418,6 +596,7 @@ export default function App() {
         onClose={() => setActiveStoreId(null)}
         onAddToCart={handleAddToCart}
         ownerMode={ownerMode}
+        maxItemsPerStore={MAX_ITEMS_PER_STORE}
         onAddNewItem={handleOpenAddNewItem}
         onEditItem={handleOpenEditItem}
         onDeleteItem={handleDeleteItem}
@@ -430,6 +609,20 @@ export default function App() {
         onClose={() => setIsAdminLoginOpen(false)}
         onSuccess={handleAdminLoginSuccess}
       />
+
+      {/* Admin-Only Notification Center */}
+      {ownerMode && (
+        <AdminNotificationsModal
+          isOpen={isAdminNotifOpen}
+          onClose={() => setIsAdminNotifOpen(false)}
+          notifications={adminNotifications}
+          unreadCount={adminUnreadCount}
+          browserPermission={browserNotifPermission}
+          onRequestBrowserPermission={handleRequestBrowserNotifications}
+          onMarkAllRead={handleMarkAllAdminNotifsRead}
+          onOpenStore={(storeId) => setActiveStoreId(storeId)}
+        />
+      )}
 
       {/* Admin Item Add/Edit Modal */}
       <ItemEditModal

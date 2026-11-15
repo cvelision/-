@@ -2,7 +2,7 @@
   "entities": {
     "Item": {
       "title": "Store Item",
-      "description": "A product listed in one of the 30 Sapphirely stores.",
+      "description": "A product listed in one of the 30 Sapphirely stores (up to 100 items per store).",
       "type": "object",
       "properties": {
         "id": {
@@ -111,6 +111,29 @@
         }
       },
       "required": ["code", "itemId", "action", "createdAt"]
+    },
+    "CatalogMeta": {
+      "title": "Catalog Metadata",
+      "description": "Lightweight version tracker to prevent redundant catalog reads.",
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "number",
+          "description": "Monotonic catalog version timestamp"
+        },
+        "lastActionId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128,
+          "description": "ID of the atomic AdminAction that bumped the version"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp"
+        }
+      },
+      "required": ["version", "lastActionId", "updatedAt"]
     }
   },
   "firestore": {
@@ -121,6 +144,10 @@
     "/adminActions/{actionId}": {
       "schema": { "$ref": "#/entities/AdminAction" },
       "description": "Write-only authorization records verified atomically during item mutations."
+    },
+    "/meta/{docId}": {
+      "schema": { "$ref": "#/entities/CatalogMeta" },
+      "description": "Lightweight catalog version metadata document."
     }
   }
 }

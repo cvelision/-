@@ -19,6 +19,7 @@ export interface StoreItem {
   imageUrl: string;
   stock?: number;
   featured?: boolean;
+  createdAtMs?: number;
 }
 
 export interface Store {
