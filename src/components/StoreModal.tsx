@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Store, StoreItem } from '../types';
 import { X, Plus, Edit2, CheckCircle, ShoppingBag, Lock } from 'lucide-react';
 import { playCoinSound } from '../utils/audio';
@@ -28,10 +28,16 @@ export const StoreModal: React.FC<StoreModalProps> = ({
   const [addedItemNotice, setAddedItemNotice] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (store && scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = 0;
-    }
+  useLayoutEffect(() => {
+    if (!store) return;
+    const resetTop = () => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = 0;
+      }
+    };
+    resetTop();
+    const rafId = window.requestAnimationFrame(resetTop);
+    return () => window.cancelAnimationFrame(rafId);
   }, [store?.id]);
 
   if (!store) return null;
@@ -59,7 +65,7 @@ export const StoreModal: React.FC<StoreModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 sm:p-6 overflow-hidden">
       {/* Backdrop */}
       <div
         onClick={onClose}
@@ -116,7 +122,7 @@ export const StoreModal: React.FC<StoreModalProps> = ({
         {/* Items List — starts right at the top and scrolls straight down */}
         <div
           ref={scrollContainerRef}
-          className="p-3 sm:p-6 overflow-y-auto flex-1 overscroll-contain"
+          className="p-3 sm:p-6 overflow-y-auto flex-1 overscroll-contain modal-scroll-top"
         >
           {store.items.length === 0 ? (
             <div className="text-center py-12 text-slate-400 text-sm space-y-3">

@@ -260,6 +260,24 @@ export default function App() {
     }
   }, [cart]);
 
+  // Lock background page scroll while any modal/drawer is open so modals open cleanly at the top
+  const isAnyModalOpen = Boolean(
+    activeStoreId ||
+      isCartOpen ||
+      isChequeOpen ||
+      isAdminLoginOpen ||
+      isAdminNotifOpen ||
+      isItemEditOpen
+  );
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    document.body.classList.toggle('overflow-hidden', isAnyModalOpen);
+    return () => {
+      document.body.classList.remove('overflow-hidden');
+    };
+  }, [isAnyModalOpen]);
+
   const handleRequestBrowserNotifications = async () => {
     if (typeof window === 'undefined' || !('Notification' in window)) {
       setBrowserNotifPermission('unsupported');

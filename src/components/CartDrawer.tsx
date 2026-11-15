@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { CartItem } from '../types';
 import { X, Trash2, ShoppingBag, ArrowRight, Sparkles } from 'lucide-react';
 import { playCoinSound } from '../utils/audio';
@@ -22,6 +22,20 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
   onClearCart,
   onProceedToCheque,
 }) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const resetTop = () => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = 0;
+      }
+    };
+    resetTop();
+    const rafId = window.requestAnimationFrame(resetTop);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const totalCoins = cartItems.reduce(
@@ -80,7 +94,10 @@ export const CartDrawer: React.FC<CartDrawerProps> = ({
           </div>
 
           {/* Cart Body */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          <div
+            ref={scrollContainerRef}
+            className="flex-1 overflow-y-auto overscroll-contain modal-scroll-top p-4 space-y-6"
+          >
             {cartItems.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center p-6 text-slate-400 space-y-4">
                 <div className="w-20 h-20 rounded-full bg-blue-950/60 border border-blue-800/40 flex items-center justify-center text-3xl">

@@ -37,13 +37,13 @@ export const FIRESTORE_UPGRADE_URL = `https://console.firebase.google.com/projec
 
 const VERSION_KEY = 'sapphirely_catalog_version_v2';
 const LEGACY_CACHE_KEY = 'sapphirely_items_cache_v1';
-const SEED_VERSION_KEY = 'sapphirely_seed_version_v4';
-const CURRENT_SEED_VERSION = 4;
+const SEED_VERSION_KEY = 'sapphirely_seed_version_v6';
+const CURRENT_SEED_VERSION = 6;
 const IDB_NAME = 'sapphirely_catalog_idb_v1';
 const IDB_STORE = 'catalog';
 const IDB_ITEMS_KEY = 'all_items';
 
-const RETIRED_BUILTIN_ITEM_IDS = new Set<string>(['obs-item-09']);
+const RETIRED_BUILTIN_ITEM_IDS = new Set<string>(['obs-item-09', 'glass-item-01']);
 const LEGACY_BROKEN_IMAGE_BY_ID: Record<string, string> = {
   'obs-item-01': '/assets/aistudio/Messenger_creation_09C9A8A9-A7ED-4EC6-B809-7561B9A673B8_4edd9447.jpeg',
   'obs-item-11': '/assets/aistudio/Messenger_creation_7E3CCB93-0A95-410F-9CE0-300735A16455_ea353938.jpeg',
@@ -355,74 +355,109 @@ async function seedBuiltinItemsInFirestore(existingItems: StoreItem[]): Promise<
   });
 
   const nextVersion = Date.now();
-  const batch = writeBatch(db);
   let lastActionId = generateSafeId('seedmeta');
 
-  if (missing.length === 0 && itemsNeedingImageRepair.length === 0) {
+  type SeedOp =
+    | { kind: 'create'; item: StoreItem }
+    | { kind: 'repair'; canonical: StoreItem; current: StoreItem };
+
+  const ops: SeedOp[] = [
+    ...missing.map((item): SeedOp => ({ kind: 'create', item })),
+    ...itemsNeedingImageRepair.map((canonical): SeedOp => ({
+      kind: 'repair',
+      canonical,
+      current: existingMap.get(canonical.id)!,
+    })),
+  ];
+
+  // Firestore writeBatch limit is 500 operations; each item writes 2 docs (adminActions + items)
+  const MAX_ITEMS_PER_BATCH = 180;
+
+  if (ops.length === 0) {
+    const batch = writeBatch(db);
     batch.set(doc(db, 'adminActions', lastActionId), {
       code: ADMIN_ACCESS_CODE,
       itemId: 'builtin-seed-meta',
       action: 'create',
       createdAt: serverTimestamp(),
     });
+    batch.set(doc(db, 'meta', 'catalog'), {
+      version: nextVersion,
+      lastActionId,
+      librarySeeded: true,
+      seededVersion: CURRENT_SEED_VERSION,
+      updatedAt: serverTimestamp(),
+    });
+    await batch.commit();
   } else {
-    missing.forEach((item, idx) => {
-      const actionId = generateSafeId(`seed${idx}`);
-      lastActionId = actionId;
-      batch.set(doc(db, 'adminActions', actionId), {
-        code: ADMIN_ACCESS_CODE,
-        itemId: item.id,
-        action: 'create',
-        createdAt: serverTimestamp(),
-      });
-      batch.set(doc(db, 'items', item.id), {
-        id: item.id,
-        storeId: item.storeId,
-        name: item.name,
-        description: item.description,
-        priceCoins: item.priceCoins,
-        imageUrl: item.imageUrl,
-        stock: item.stock ?? 30,
-        featured: Boolean(item.featured),
-        deleted: false,
-        lastActionId: actionId,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    });
+    for (let start = 0; start < ops.length; start += MAX_ITEMS_PER_BATCH) {
+      const chunk = ops.slice(start, start + MAX_ITEMS_PER_BATCH);
+      const isLastChunk = start + MAX_ITEMS_PER_BATCH >= ops.length;
+      const batch = writeBatch(db);
 
-    itemsNeedingImageRepair.forEach((canonical, idx) => {
-      const current = existingMap.get(canonical.id)!;
-      const actionId = generateSafeId(`fix${idx}`);
-      lastActionId = actionId;
-      batch.set(doc(db, 'adminActions', actionId), {
-        code: ADMIN_ACCESS_CODE,
-        itemId: canonical.id,
-        action: 'update',
-        createdAt: serverTimestamp(),
+      chunk.forEach((op, offset) => {
+        const idx = start + offset;
+        if (op.kind === 'create') {
+          const item = op.item;
+          const actionId = generateSafeId(`seed${idx}`);
+          lastActionId = actionId;
+          batch.set(doc(db, 'adminActions', actionId), {
+            code: ADMIN_ACCESS_CODE,
+            itemId: item.id,
+            action: 'create',
+            createdAt: serverTimestamp(),
+          });
+          batch.set(doc(db, 'items', item.id), {
+            id: item.id,
+            storeId: item.storeId,
+            name: item.name,
+            description: item.description,
+            priceCoins: item.priceCoins,
+            imageUrl: item.imageUrl,
+            stock: item.stock ?? 30,
+            featured: Boolean(item.featured),
+            deleted: false,
+            lastActionId: actionId,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          const { canonical, current } = op;
+          const actionId = generateSafeId(`fix${idx}`);
+          lastActionId = actionId;
+          batch.set(doc(db, 'adminActions', actionId), {
+            code: ADMIN_ACCESS_CODE,
+            itemId: canonical.id,
+            action: 'update',
+            createdAt: serverTimestamp(),
+          });
+          batch.update(doc(db, 'items', canonical.id), {
+            name: current.name,
+            description: current.description,
+            priceCoins: current.priceCoins,
+            imageUrl: canonical.imageUrl,
+            stock: current.stock ?? canonical.stock ?? 30,
+            featured: Boolean(current.featured),
+            lastActionId: actionId,
+            updatedAt: serverTimestamp(),
+          });
+        }
       });
-      batch.update(doc(db, 'items', canonical.id), {
-        name: current.name,
-        description: current.description,
-        priceCoins: current.priceCoins,
-        imageUrl: canonical.imageUrl,
-        stock: current.stock ?? canonical.stock ?? 30,
-        featured: Boolean(current.featured),
-        lastActionId: actionId,
-        updatedAt: serverTimestamp(),
-      });
-    });
+
+      if (isLastChunk) {
+        batch.set(doc(db, 'meta', 'catalog'), {
+          version: nextVersion,
+          lastActionId,
+          librarySeeded: true,
+          seededVersion: CURRENT_SEED_VERSION,
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      await batch.commit();
+    }
   }
 
-  batch.set(doc(db, 'meta', 'catalog'), {
-    version: nextVersion,
-    lastActionId,
-    librarySeeded: true,
-    seededVersion: CURRENT_SEED_VERSION,
-    updatedAt: serverTimestamp(),
-  });
-
-  await batch.commit();
   setLibrarySeededLocally(true);
 
   const repairedExisting = activeExisting.map((it) => {
@@ -510,6 +545,7 @@ export function subscribeToItems(
           } catch (seedErr) {
             if (!active) return;
             const fallback = mergeWithFallbackLibraryItems(freshItems);
+            await saveCachedItemsAsync(fallback, remoteVersion);
             onItems(fallback);
             if (isQuotaExceededError(seedErr) && onError) {
               onError(
@@ -521,8 +557,9 @@ export function subscribeToItems(
           }
         }
 
-        await saveCachedItemsAsync(freshItems, remoteVersion);
-        onItems(mergeWithFallbackLibraryItems(freshItems));
+        const mergedFresh = mergeWithFallbackLibraryItems(freshItems);
+        await saveCachedItemsAsync(mergedFresh, remoteVersion);
+        onItems(mergedFresh);
       } catch (error) {
         if (!active) return;
         const fallback = mergeWithFallbackLibraryItems(cached);

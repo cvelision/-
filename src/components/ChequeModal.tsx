@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { CartItem } from '../types';
 import { X, Printer, Copy, CheckCircle } from 'lucide-react';
 import { playRoyalStampSound, playCoinSound } from '../utils/audio';
@@ -22,6 +22,19 @@ export const ChequeModal: React.FC<ChequeModalProps> = ({
 }) => {
   const [copiedNotice, setCopiedNotice] = useState(false);
   const [purchaseSuccess, setPurchaseSuccess] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const resetTop = () => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = 0;
+      }
+    };
+    resetTop();
+    const rafId = window.requestAnimationFrame(resetTop);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -89,16 +102,16 @@ export const ChequeModal: React.FC<ChequeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto print:p-0 print:bg-white">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 sm:p-4 overflow-hidden print:static print:p-0 print:bg-white print:overflow-visible">
       {/* Backdrop */}
       <div
         onClick={onClose}
         className="fixed inset-0 bg-black/85 backdrop-blur-sm print:hidden"
       />
 
-      <div className="relative w-full max-w-3xl bg-[#070e24] border border-slate-800 rounded-xl p-3 sm:p-5 shadow-2xl z-10 flex flex-col max-h-[95vh] overflow-y-auto print:max-h-none print:border-none print:bg-white print:text-black">
+      <div className="relative w-full max-w-3xl bg-[#070e24] border-0 sm:border border-slate-800 rounded-none sm:rounded-xl shadow-2xl z-10 flex flex-col h-[100dvh] sm:h-auto sm:max-h-[92vh] overflow-hidden print:h-auto print:max-h-none print:overflow-visible print:border-none print:bg-white print:text-black">
         {/* Header Controls - Compact */}
-        <div className="flex items-center justify-between pb-2 border-b border-slate-800 print:hidden">
+        <div className="px-3 py-2.5 sm:px-5 sm:pt-4 sm:pb-2.5 flex items-center justify-between border-b border-slate-800 shrink-0 print:hidden">
           <div className="flex items-center gap-2">
             <h3 className="font-cinzel text-base font-bold text-slate-100">
               Худалдан авалтын чек
@@ -136,8 +149,13 @@ export const ChequeModal: React.FC<ChequeModalProps> = ({
           </div>
         </div>
 
+        {/* Scrollable Body starting cleanly at the top */}
+        <div
+          ref={scrollContainerRef}
+          className="px-3 py-3 sm:px-5 sm:py-4 overflow-y-auto flex-1 overscroll-contain modal-scroll-top print:overflow-visible print:p-0"
+        >
         {/* Sender Name Inline Input - Compact and close */}
-        <div className="my-2.5 flex items-center justify-between gap-2 text-xs print:hidden">
+        <div className="mb-3 flex items-center justify-between gap-2 text-xs print:hidden">
           <label className="font-semibold text-slate-300 whitespace-nowrap">
             Илгээгч (Нэрээ бичнэ):
           </label>
@@ -236,9 +254,10 @@ export const ChequeModal: React.FC<ChequeModalProps> = ({
             </div>
           ))}
         </div>
+        </div>
 
         {/* Footer: Нийт дүн ба Баталгаажуулах товч - Tightly connected */}
-        <div className="mt-2.5 pt-2.5 border-t border-slate-800 print:hidden flex items-center justify-between gap-3">
+        <div className="px-3 py-2.5 sm:px-5 sm:py-3 border-t border-slate-800 bg-[#050a18] shrink-0 print:hidden flex items-center justify-between gap-3">
           <div className="flex items-baseline gap-2">
             <span className="text-xs text-slate-400">Нийт дүн:</span>
             <span className="font-cinzel text-base sm:text-lg font-bold text-amber-300">

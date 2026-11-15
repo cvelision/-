@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { StoreItem } from '../types';
 import { Bell, BellRing, CheckCheck, Copy, Check, ExternalLink, X } from 'lucide-react';
 
@@ -44,12 +44,34 @@ export const AdminNotificationsModal: React.FC<AdminNotificationsModalProps> = (
   onOpenStore,
 }) => {
   const [copiedCode, setCopiedCode] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const resetTop = () => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = 0;
+      }
+    };
+    resetTop();
+    const rafId = window.requestAnimationFrame(resetTop);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
+  const BUILTIN_PREFIXES = [
+    'lib-item-',
+    'obs-item-',
+    'cosm-item-',
+    'perf-item-',
+    'glass-item-',
+    'porc-item-',
+    'bake-item-',
+  ];
   const customItems = notifications
     .map((n) => n.item)
-    .filter((it) => !it.id.startsWith('lib-item-') && !it.id.startsWith('obs-item-'));
+    .filter((it) => !BUILTIN_PREFIXES.some((prefix) => it.id.startsWith(prefix)));
 
   const handleCopyItemsCode = async () => {
     const targetItems = customItems.length > 0 ? customItems : notifications.map((n) => n.item);
@@ -77,10 +99,10 @@ export const AdminNotificationsModal: React.FC<AdminNotificationsModalProps> = (
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 sm:p-4 overflow-hidden">
       <div onClick={onClose} className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
 
-      <div className="relative w-full max-w-lg bg-[#070e24] border border-blue-800/70 rounded-2xl shadow-2xl z-10 flex flex-col max-h-[85vh] overflow-hidden">
+      <div className="relative w-full max-w-lg bg-[#070e24] border-0 sm:border border-blue-800/70 rounded-none sm:rounded-2xl shadow-2xl z-10 flex flex-col h-[100dvh] sm:h-auto sm:max-h-[85vh] overflow-hidden">
         <div className="p-4 bg-[#091228] border-b border-blue-900/60 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/40 flex items-center justify-center">
@@ -131,7 +153,10 @@ export const AdminNotificationsModal: React.FC<AdminNotificationsModalProps> = (
         </div>
 
         {/* Notification List */}
-        <div className="p-4 overflow-y-auto flex-1 space-y-2.5">
+        <div
+          ref={scrollContainerRef}
+          className="p-4 overflow-y-auto flex-1 overscroll-contain modal-scroll-top space-y-2.5"
+        >
           {notifications.length === 0 ? (
             <div className="text-center py-10 text-slate-400 text-xs">
               Одоогоор нэмэгдсэн барааны зураг алга байна.

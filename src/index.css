@@ -62,3 +62,6 @@
   animation: pulseSubtle 4s ease-in-out infinite;
 }
 
+.modal-scroll-top {
+  overflow-anchor: none;
+}

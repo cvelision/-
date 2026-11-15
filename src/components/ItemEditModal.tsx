@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Store, StoreItem } from '../types';
 import { X, Sparkles, Check, Upload } from 'lucide-react';
 
@@ -97,6 +97,19 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
   const [featured, setFeatured] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const resetTop = () => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = 0;
+      }
+    };
+    resetTop();
+    const rafId = window.requestAnimationFrame(resetTop);
+    return () => window.cancelAnimationFrame(rafId);
+  }, [isOpen, store?.id, editingItem?.id]);
 
   useEffect(() => {
     if (editingItem) {
@@ -183,11 +196,11 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 sm:p-4 overflow-hidden">
       <div onClick={onClose} className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
 
-      <div className="relative w-full max-w-xl bg-[#070e24] border border-blue-700/60 rounded-3xl p-6 shadow-2xl z-10 my-8">
-        <div className="flex items-center justify-between pb-4 border-b border-blue-900/60">
+      <div className="relative w-full max-w-xl bg-[#070e24] border-0 sm:border border-blue-700/60 rounded-none sm:rounded-3xl shadow-2xl z-10 flex flex-col h-[100dvh] sm:h-auto sm:max-h-[90vh] overflow-hidden">
+        <div className="p-4 sm:p-6 pb-4 border-b border-blue-900/60 flex items-center justify-between shrink-0 bg-[#070e24]">
           <div>
             <span className="text-[11px] uppercase font-bold tracking-widest text-amber-400">
               {store.name} өргөөний бараа удирдах
@@ -204,13 +217,17 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
           </button>
         </div>
 
-        {error && (
-          <div className="mt-3 p-3 rounded-xl bg-red-950/80 border border-red-500/50 text-red-200 text-xs">
-            {error}
-          </div>
-        )}
+        <div
+          ref={scrollContainerRef}
+          className="p-4 sm:p-6 overflow-y-auto flex-1 overscroll-contain modal-scroll-top"
+        >
+          {error && (
+            <div className="mb-4 p-3 rounded-xl bg-red-950/80 border border-red-500/50 text-red-200 text-xs">
+              {error}
+            </div>
+          )}
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-blue-200 mb-1">
               Барааны нэр *
@@ -360,6 +377,7 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
             </button>
           </div>
         </form>
+        </div>
       </div>
     </div>
   );
