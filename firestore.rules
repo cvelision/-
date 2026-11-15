@@ -1,0 +1,114 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global safety net: default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (request.auth.token.email == 'xvlosity@gmail.com' && request.auth.token.email_verified == true)
+      );
+    }
+
+    function isValidAdminAction(data) {
+      return data.keys().hasAll(['code', 'itemId', 'action', 'createdAt']) &&
+        data.keys().hasOnly(['code', 'itemId', 'action', 'createdAt']) &&
+        data.code is string && data.code.size() >= 1 && data.code.size() <= 64 &&
+        data.code == '54PPH1R3' &&
+        isValidId(data.itemId) &&
+        data.action is string && data.action in ['create', 'update', 'delete'] &&
+        data.createdAt == request.time;
+    }
+
+    function isValidItem(data) {
+      return data.keys().hasAll(['id', 'storeId', 'name', 'description', 'priceCoins', 'imageUrl', 'stock', 'featured', 'deleted', 'lastActionId', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['id', 'storeId', 'name', 'description', 'priceCoins', 'imageUrl', 'stock', 'featured', 'deleted', 'lastActionId', 'createdAt', 'updatedAt']) &&
+        isValidId(data.id) &&
+        isValidId(data.storeId) &&
+        data.name is string && data.name.size() >= 1 && data.name.size() <= 200 &&
+        data.description is string && data.description.size() <= 1000 &&
+        data.priceCoins is number && data.priceCoins > 0 && data.priceCoins <= 100000000 &&
+        data.imageUrl is string && data.imageUrl.size() >= 1 && data.imageUrl.size() <= 700000 &&
+        data.stock is number && data.stock >= 0 && data.stock <= 1000000 &&
+        data.featured is bool &&
+        data.deleted is bool &&
+        isValidId(data.lastActionId) &&
+        data.createdAt is timestamp &&
+        data.updatedAt is timestamp;
+    }
+
+    function hasValidAtomicAdminAction(itemId, expectedAction) {
+      return isValidId(incoming().lastActionId) &&
+        !exists(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)) &&
+        existsAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)) &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.itemId == itemId &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.action == expectedAction &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.code == '54PPH1R3' &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.createdAt == request.time;
+    }
+
+    match /adminActions/{actionId} {
+      allow read: if false;
+      allow create: if isValidId(actionId) && isValidAdminAction(incoming());
+      allow update, delete: if false;
+    }
+
+    match /admins/{adminUid} {
+      allow get: if isSignedIn() && request.auth.uid == adminUid;
+      allow list, write: if false;
+    }
+
+    match /items/{itemId} {
+      allow get: if isValidId(itemId) && (resource == null || existing().deleted == false);
+      allow list: if existing().deleted == false;
+
+      allow create: if isValidId(itemId) &&
+        isValidItem(incoming()) &&
+        incoming().id == itemId &&
+        incoming().deleted == false &&
+        incoming().createdAt == request.time &&
+        incoming().updatedAt == request.time &&
+        (isAdmin() || hasValidAtomicAdminAction(itemId, 'create'));
+
+      allow update: if isValidId(itemId) &&
+        isValidItem(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().storeId == existing().storeId &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().updatedAt == request.time &&
+        (
+          (
+            incoming().deleted == false &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'priceCoins', 'imageUrl', 'stock', 'featured', 'lastActionId', 'updatedAt']) &&
+            (isAdmin() || hasValidAtomicAdminAction(itemId, 'update'))
+          ) ||
+          (
+            incoming().deleted == true &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['deleted', 'lastActionId', 'updatedAt']) &&
+            (isAdmin() || hasValidAtomicAdminAction(itemId, 'delete'))
+          )
+        );
+
+      allow delete: if isValidId(itemId) && isAdmin();
+    }
+  }
+}

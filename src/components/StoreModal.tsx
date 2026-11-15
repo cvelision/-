@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Store, StoreItem } from '../types';
-import { X, Plus, Edit2, Trash2, CheckCircle, ShoppingBag } from 'lucide-react';
+import { X, Plus, Edit2, Trash2, CheckCircle, ShoppingBag, Lock } from 'lucide-react';
 import { playCoinSound } from '../utils/audio';
 
 interface StoreModalProps {
@@ -11,6 +11,7 @@ interface StoreModalProps {
   onAddNewItem: (store: Store) => void;
   onEditItem: (store: Store, item: StoreItem) => void;
   onDeleteItem: (store: Store, itemId: string) => void;
+  onRequestAdminLogin: () => void;
 }
 
 export const StoreModal: React.FC<StoreModalProps> = ({
@@ -21,6 +22,7 @@ export const StoreModal: React.FC<StoreModalProps> = ({
   onAddNewItem,
   onEditItem,
   onDeleteItem,
+  onRequestAdminLogin,
 }) => {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [addedItemNotice, setAddedItemNotice] = useState<string | null>(null);
@@ -57,23 +59,33 @@ export const StoreModal: React.FC<StoreModalProps> = ({
 
       {/* Main Container */}
       <div className="relative w-full max-w-4xl bg-[#070e20] rounded-xl border border-slate-800 shadow-2xl z-10 flex flex-col max-h-[90vh] overflow-hidden">
-        {/* Simple Clean Header without store photo or store description */}
+        {/* Simple Clean Header */}
         <div className="p-4 bg-[#091228] border-b border-slate-800 flex items-center justify-between">
           <h2 className="font-cinzel text-xl font-bold text-slate-100">
             {store.name}
           </h2>
 
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => onAddNewItem(store)}
-              className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs flex items-center gap-1 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Бараа нэмэх</span>
-            </button>
+            {ownerMode ? (
+              <button
+                onClick={() => onAddNewItem(store)}
+                className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 text-xs flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Бараа нэмэх</span>
+              </button>
+            ) : (
+              <button
+                onClick={onRequestAdminLogin}
+                className="px-2.5 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-xs flex items-center gap-1 cursor-pointer"
+              >
+                <Lock className="w-3 h-3" />
+                <span>Админ нэвтрэх</span>
+              </button>
+            )}
             <button
               onClick={onClose}
-              className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-white"
+              className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -85,13 +97,23 @@ export const StoreModal: React.FC<StoreModalProps> = ({
           {store.items.length === 0 ? (
             <div className="text-center py-12 text-slate-400 text-sm space-y-3">
               <p>Одоогоор бараа ороогүй байна.</p>
-              <button
-                onClick={() => onAddNewItem(store)}
-                className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Бараа нэмэх</span>
-              </button>
+              {ownerMode ? (
+                <button
+                  onClick={() => onAddNewItem(store)}
+                  className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Бараа нэмэх</span>
+                </button>
+              ) : (
+                <button
+                  onClick={onRequestAdminLogin}
+                  className="px-4 py-2 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 font-semibold text-xs inline-flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Админаар нэвтэрч бараа нэмэх</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -117,14 +139,14 @@ export const StoreModal: React.FC<StoreModalProps> = ({
                         <div className="absolute top-2 right-2 flex gap-1">
                           <button
                             onClick={() => onEditItem(store, item)}
-                            className="p-1 rounded bg-black/70 hover:bg-slate-800 text-white"
+                            className="p-1 rounded bg-black/70 hover:bg-slate-800 text-white cursor-pointer"
                             title="Засах"
                           >
                             <Edit2 className="w-3 h-3" />
                           </button>
                           <button
                             onClick={() => onDeleteItem(store, item.id)}
-                            className="p-1 rounded bg-black/70 hover:bg-red-800 text-white"
+                            className="p-1 rounded bg-black/70 hover:bg-red-800 text-white cursor-pointer"
                             title="Устгах"
                           >
                             <Trash2 className="w-3 h-3" />
@@ -147,7 +169,6 @@ export const StoreModal: React.FC<StoreModalProps> = ({
 
                     {/* Price & Quantity & Live Calc */}
                     <div className="space-y-2 pt-2 border-t border-slate-800">
-                      {/* Price in coins */}
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-slate-400">Нэгжийн үнэ:</span>
                         <span className="text-amber-300 font-bold">
@@ -155,7 +176,6 @@ export const StoreModal: React.FC<StoreModalProps> = ({
                         </span>
                       </div>
 
-                      {/* Quantity input: "тоо ширхэг гэсэн бичиг байна" */}
                       <div className="flex items-center justify-between bg-[#081126] p-1.5 rounded border border-slate-800">
                         <span className="text-xs text-slate-300 font-medium">
                           Тоо ширхэг:
@@ -164,7 +184,7 @@ export const StoreModal: React.FC<StoreModalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleQtyChange(item.id, qty - 1)}
-                            className="w-6 h-6 rounded bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center text-xs font-bold"
+                            className="w-6 h-6 rounded bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center text-xs font-bold cursor-pointer"
                           >
                             -
                           </button>
@@ -180,14 +200,13 @@ export const StoreModal: React.FC<StoreModalProps> = ({
                           <button
                             type="button"
                             onClick={() => handleQtyChange(item.id, qty + 1)}
-                            className="w-6 h-6 rounded bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center text-xs font-bold"
+                            className="w-6 h-6 rounded bg-slate-900 hover:bg-slate-800 text-white flex items-center justify-center text-xs font-bold cursor-pointer"
                           >
                             +
                           </button>
                         </div>
                       </div>
 
-                      {/* Auto-calculated Total: "тоо ширхэг дээр тоогоо оруулахад үнэ нь яг түүгээрээ автоматаар бодогдоно" */}
                       <div className="flex items-center justify-between text-xs py-1 px-2 rounded bg-slate-900/60 border border-slate-800">
                         <span className="text-slate-400">Дүн ({qty}ш):</span>
                         <span className="text-amber-300 font-bold">
@@ -195,7 +214,6 @@ export const StoreModal: React.FC<StoreModalProps> = ({
                         </span>
                       </div>
 
-                      {/* "Худалдан авах" button */}
                       <button
                         type="button"
                         onClick={() => handleAddToCart(item)}
@@ -229,7 +247,7 @@ export const StoreModal: React.FC<StoreModalProps> = ({
         <div className="p-3 bg-[#050a18] border-t border-slate-800 flex justify-end">
           <button
             onClick={onClose}
-            className="px-4 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-xs text-slate-300"
+            className="px-4 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-xs text-slate-300 cursor-pointer"
           >
             Хаах
           </button>

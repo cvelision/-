@@ -1,6 +1,6 @@
 import React from 'react';
 import { CartItem } from '../types';
-import { X, Trash2, ShoppingBag, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react';
+import { X, Trash2, ShoppingBag, ArrowRight, Sparkles } from 'lucide-react';
 import { playCoinSound } from '../utils/audio';
 
 interface CartDrawerProps {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingBag, ShieldCheck, ShieldAlert, Search, Sparkles } from 'lucide-react';
+import { ShoppingBag, ShieldCheck, Lock, Search } from 'lucide-react';
 import { DiamondLogo } from './DiamondLogo';
 import { DistrictId } from '../types';
 
@@ -63,9 +63,8 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
 
-          {/* Right Actions: Owner Mode Toggle & Cart Button */}
+          {/* Right Actions: Admin Login Toggle & Cart Button */}
           <div className="flex items-center gap-2.5">
-            {/* Owner mode switch */}
             <button
               onClick={onToggleOwnerMode}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
@@ -77,12 +76,12 @@ export const Header: React.FC<HeaderProps> = ({
               {ownerMode ? (
                 <>
                   <ShieldCheck className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Бараа удирдах горим</span>
+                  <span>Админ (Гарах)</span>
                 </>
               ) : (
                 <>
-                  <ShieldAlert className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Бараа удирдах</span>
+                  <Lock className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Админ нэвтрэх</span>
                 </>
               )}
             </button>

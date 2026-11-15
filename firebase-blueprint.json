@@ -1,0 +1,126 @@
+{
+  "entities": {
+    "Item": {
+      "title": "Store Item",
+      "description": "A product listed in one of the 30 Sapphirely stores.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128,
+          "description": "Unique item identifier"
+        },
+        "storeId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 64,
+          "description": "ID of the store selling this item"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "description": "Item display name"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000,
+          "description": "Item description"
+        },
+        "priceCoins": {
+          "type": "number",
+          "description": "Item price in gold coins"
+        },
+        "imageUrl": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 700000,
+          "description": "Image URL or compressed data URL"
+        },
+        "stock": {
+          "type": "number",
+          "description": "Available quantity in stock"
+        },
+        "featured": {
+          "type": "boolean",
+          "description": "Whether the item is featured"
+        },
+        "deleted": {
+          "type": "boolean",
+          "description": "Soft-delete flag"
+        },
+        "lastActionId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128,
+          "description": "ID of the atomic AdminAction that authorized this mutation"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server last update timestamp"
+        }
+      },
+      "required": [
+        "id",
+        "storeId",
+        "name",
+        "description",
+        "priceCoins",
+        "imageUrl",
+        "stock",
+        "featured",
+        "deleted",
+        "lastActionId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "AdminAction": {
+      "title": "Admin Action",
+      "description": "Write-only authorization record proving the admin code was supplied for an item mutation.",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Admin authorization code"
+        },
+        "itemId": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_\\-]+$",
+          "maxLength": 128,
+          "description": "Target item ID"
+        },
+        "action": {
+          "type": "string",
+          "enum": ["create", "update", "delete"],
+          "description": "Mutation type"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp"
+        }
+      },
+      "required": ["code", "itemId", "action", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/items/{itemId}": {
+      "schema": { "$ref": "#/entities/Item" },
+      "description": "Publicly readable catalog of non-deleted store items, writable only by verified admins or atomic AdminAction."
+    },
+    "/adminActions/{actionId}": {
+      "schema": { "$ref": "#/entities/AdminAction" },
+      "description": "Write-only authorization records verified atomically during item mutations."
+    }
+  }
+}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Store, StoreItem } from '../types';
-import { X, Image as ImageIcon, Sparkles, Check, Upload } from 'lucide-react';
+import { X, Sparkles, Check, Upload } from 'lucide-react';
 
 interface ItemEditModalProps {
   isOpen: boolean;
@@ -18,10 +18,9 @@ interface ItemEditModalProps {
       featured?: boolean;
     },
     itemId?: string
-  ) => void;
+  ) => Promise<void>;
 }
 
-// Preset royal-themed image gallery for quick selection
 const SAMPLE_PRESET_IMAGES = [
   { name: 'Алтан эрдэнэс', url: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=600&q=80' },
   { name: 'Хааны хувцас', url: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=600&q=80' },
@@ -30,6 +29,58 @@ const SAMPLE_PRESET_IMAGES = [
   { name: 'Эртний ном судар', url: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=600&q=80' },
   { name: 'Эмийн ургамал, рашаан', url: 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?auto=format&fit=crop&w=600&q=80' },
 ];
+
+async function compressImageFile(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Зураг уншихад алдаа гарлаа'));
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== 'string') {
+        reject(new Error('Зургийн формат буруу байна'));
+        return;
+      }
+
+      const img = new Image();
+      img.onerror = () => reject(new Error('Зургийг нээхэд алдаа гарлаа'));
+      img.onload = () => {
+        const MAX_DIM = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_DIM || height > MAX_DIM) {
+          if (width >= height) {
+            height = Math.round((height * MAX_DIM) / width);
+            width = MAX_DIM;
+          } else {
+            width = Math.round((width * MAX_DIM) / height);
+            height = MAX_DIM;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(result);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, width, height);
+
+        let quality = 0.78;
+        let compressed = canvas.toDataURL('image/jpeg', quality);
+        while (compressed.length > 550000 && quality > 0.35) {
+          quality -= 0.12;
+          compressed = canvas.toDataURL('image/jpeg', quality);
+        }
+        resolve(compressed);
+      };
+      img.src = result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
 
 export const ItemEditModal: React.FC<ItemEditModalProps> = ({
   isOpen,
@@ -45,6 +96,7 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
   const [stock, setStock] = useState<number>(10);
   const [featured, setFeatured] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
   useEffect(() => {
     if (editingItem) {
@@ -63,24 +115,28 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
       setFeatured(false);
     }
     setError(null);
+    setIsSaving(false);
   }, [editingItem, isOpen]);
 
   if (!isOpen || !store) return null;
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          setImageUrl(reader.result);
-        }
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    try {
+      setError(null);
+      const compressed = await compressImageFile(file);
+      if (compressed.length > 680000) {
+        setError('Зургийн хэмжээ хэт том байна. Өөр жижиг зураг эсвэл URL ашиглана уу.');
+        return;
+      }
+      setImageUrl(compressed);
+    } catch {
+      setError('Зураг оруулахад алдаа гарлаа.');
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) {
       setError('Барааны нэрийг оруулна уу');
@@ -94,21 +150,36 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
       setError('Барааны зургийн холбоос эсвэл зураг оруулна уу');
       return;
     }
+    if (imageUrl.trim().length > 680000) {
+      setError('Зургийн хэмжээ хэт том байна. Дахин өөр зураг сонгоно уу.');
+      return;
+    }
 
-    onSave(
-      store.id,
-      {
-        name: name.trim(),
-        description: description.trim() || `${store.name} их өргөөний бүтээгдэхүүн`,
-        priceCoins: Number(priceCoins),
-        imageUrl: imageUrl.trim(),
-        stock: Number(stock) || 10,
-        featured,
-      },
-      editingItem?.id
-    );
-
-    onClose();
+    setIsSaving(true);
+    setError(null);
+    try {
+      await onSave(
+        store.id,
+        {
+          name: name.trim(),
+          description: description.trim() || `${store.name} өргөөний бараа`,
+          priceCoins: Number(priceCoins),
+          imageUrl: imageUrl.trim(),
+          stock: Number(stock) || 10,
+          featured,
+        },
+        editingItem?.id
+      );
+      onClose();
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? `Хадгалах үед алдаа гарлаа: ${err.message}`
+          : 'Бараа хадгалах үед алдаа гарлаа'
+      );
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -116,7 +187,6 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
       <div onClick={onClose} className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
 
       <div className="relative w-full max-w-xl bg-[#070e24] border border-blue-700/60 rounded-3xl p-6 shadow-2xl z-10 my-8">
-        {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-blue-900/60">
           <div>
             <span className="text-[11px] uppercase font-bold tracking-widest text-amber-400">
@@ -128,7 +198,7 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-2 rounded-full hover:bg-blue-900/40 text-slate-300 hover:text-white"
+            className="p-2 rounded-full hover:bg-blue-900/40 text-slate-300 hover:text-white cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -140,7 +210,6 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
           </div>
         )}
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
           <div>
             <label className="block text-xs font-semibold text-blue-200 mb-1">
@@ -188,14 +257,13 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
             </div>
           </div>
 
-          {/* Image input and preview */}
           <div>
             <label className="block text-xs font-semibold text-blue-200 mb-1">
               Зургийн холбоос (URL эсвэл Компьютероос сонгох) *
             </label>
             <div className="flex gap-2">
               <input
-                type="url"
+                type="text"
                 value={imageUrl}
                 onChange={(e) => setImageUrl(e.target.value)}
                 placeholder="https://images.unsplash.com/..."
@@ -213,7 +281,6 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
               </label>
             </div>
 
-            {/* Quick preset images */}
             <div className="mt-2 flex items-center gap-2 overflow-x-auto py-1">
               <span className="text-[10px] text-blue-300/70 whitespace-nowrap">Бэлэн зураг:</span>
               {SAMPLE_PRESET_IMAGES.map((preset, idx) => (
@@ -228,7 +295,6 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
               ))}
             </div>
 
-            {/* Image Preview */}
             {imageUrl && (
               <div className="mt-2 relative h-32 rounded-xl overflow-hidden border border-blue-800/80 bg-slate-950">
                 <img
@@ -258,7 +324,6 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
             />
           </div>
 
-          {/* Featured checkbox */}
           <div className="flex items-center gap-2 pt-1">
             <input
               type="checkbox"
@@ -273,20 +338,25 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
             </label>
           </div>
 
-          {/* Actions */}
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-blue-900/60">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-xl bg-blue-950 hover:bg-blue-900 text-xs font-semibold text-blue-200"
+              disabled={isSaving}
+              className="px-4 py-2.5 rounded-xl bg-blue-950 hover:bg-blue-900 text-xs font-semibold text-blue-200 cursor-pointer disabled:opacity-50"
             >
               Цуцлах
             </button>
             <button
               type="submit"
-              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 text-xs font-bold uppercase tracking-wider shadow-lg shadow-amber-500/20 cursor-pointer"
+              disabled={isSaving}
+              className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 text-xs font-bold uppercase tracking-wider shadow-lg shadow-amber-500/20 cursor-pointer disabled:opacity-50"
             >
-              {editingItem ? 'Өөрчлөлтийг хадгалах' : 'Барааг өргөөнд нэмэх'}
+              {isSaving
+                ? 'Хадгалж байна...'
+                : editingItem
+                  ? 'Өөрчлөлтийг хадгалах'
+                  : 'Барааг өргөөнд нэмэх'}
             </button>
           </div>
         </form>

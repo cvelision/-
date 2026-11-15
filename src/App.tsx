@@ -3,37 +3,40 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Store, StoreItem, CartItem, DistrictId } from './types';
-import { DISTRICTS } from './data/initialStores';
+import { DISTRICTS, INITIAL_STORES } from './data/initialStores';
 import {
-  getStoredStores,
-  saveStoredStores,
-  getStoredOwnerMode,
-  setStoredOwnerMode,
+  getStoredAdminCode,
+  setStoredAdminCode,
   getStoredSenderName,
   setStoredSenderName,
-  addItemToStore,
-  updateItemInStore,
-  deleteItemFromStore,
-  resetStoresToDefault,
 } from './utils/storeStorage';
+import {
+  ADMIN_ACCESS_CODE,
+  subscribeToItems,
+  createStoreItemInFirestore,
+  updateStoreItemInFirestore,
+  deleteStoreItemInFirestore,
+} from './firebase';
 import { Header } from './components/Header';
 import { WelcomeHero } from './components/WelcomeHero';
 import { MansionCard } from './components/MansionCard';
 import { StoreModal } from './components/StoreModal';
 import { ItemEditModal } from './components/ItemEditModal';
+import { AdminLoginModal } from './components/AdminLoginModal';
 import { CartDrawer } from './components/CartDrawer';
 import { ChequeModal } from './components/ChequeModal';
 import { DiamondLogo } from './components/DiamondLogo';
-import { Crown, Sparkles, RotateCcw, ArrowUp, ChevronDown } from 'lucide-react';
+import { Sparkles, ArrowUp } from 'lucide-react';
 
 const CART_STORAGE_KEY = 'sapphirely_cart_v1';
 
 export default function App() {
-  const [stores, setStores] = useState<Store[]>([]);
+  const [cloudItems, setCloudItems] = useState<StoreItem[]>([]);
+  const [isLoadingItems, setIsLoadingItems] = useState<boolean>(true);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [ownerMode, setOwnerMode] = useState<boolean>(false);
+  const [adminCode, setAdminCode] = useState<string | null>(null);
   const [senderName, setSenderName] = useState<string>('Эрхэм худалдан авагч');
 
   // Active filters & navigation
@@ -41,11 +44,12 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Modals state
-  const [activeStore, setActiveStore] = useState<Store | null>(null);
+  const [activeStoreId, setActiveStoreId] = useState<string | null>(null);
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [isChequeOpen, setIsChequeOpen] = useState<boolean>(false);
+  const [isAdminLoginOpen, setIsAdminLoginOpen] = useState<boolean>(false);
 
-  // Owner Item Edit modal state
+  // Admin Item Edit modal state
   const [isItemEditOpen, setIsItemEditOpen] = useState<boolean>(false);
   const [editingStore, setEditingStore] = useState<Store | null>(null);
   const [editingItem, setEditingItem] = useState<StoreItem | null>(null);
@@ -55,10 +59,43 @@ export default function App() {
 
   const mansionsRef = useRef<HTMLDivElement>(null);
 
-  // Initialize from localStorage
+  const ownerMode = adminCode === ADMIN_ACCESS_CODE;
+
+  // Combine static store directory with live Firestore items
+  const stores = useMemo<Store[]>(() => {
+    const itemsByStore: Record<string, StoreItem[]> = {};
+    cloudItems.forEach((it) => {
+      if (!itemsByStore[it.storeId]) {
+        itemsByStore[it.storeId] = [];
+      }
+      itemsByStore[it.storeId].push(it);
+    });
+
+    return INITIAL_STORES.map((baseStore) => ({
+      ...baseStore,
+      items: itemsByStore[baseStore.id] || [],
+    }));
+  }, [cloudItems]);
+
+  const activeStore = useMemo<Store | null>(() => {
+    if (!activeStoreId) return null;
+    return stores.find((s) => s.id === activeStoreId) || null;
+  }, [stores, activeStoreId]);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 3200);
+  };
+
+  // Subscribe to real-time Firestore items & restore local session preferences
   useEffect(() => {
-    setStores(getStoredStores());
-    setOwnerMode(getStoredOwnerMode());
+    const savedCode = getStoredAdminCode();
+    if (savedCode === ADMIN_ACCESS_CODE) {
+      setAdminCode(savedCode);
+    } else if (savedCode) {
+      setStoredAdminCode(null);
+    }
+
     setSenderName(getStoredSenderName());
 
     try {
@@ -70,11 +107,24 @@ export default function App() {
         }
       }
     } catch {
-      // Ignore
+      // Ignore corrupt local cart
     }
+
+    const unsubscribe = subscribeToItems(
+      (items) => {
+        setCloudItems(items);
+        setIsLoadingItems(false);
+      },
+      () => {
+        setIsLoadingItems(false);
+        showToast('Өгөгдлийн сантай холбогдоход алдаа гарлаа.');
+      }
+    );
+
+    return () => unsubscribe();
   }, []);
 
-  // Save cart changes
+  // Save cart changes locally
   useEffect(() => {
     try {
       localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
@@ -83,20 +133,20 @@ export default function App() {
     }
   }, [cart]);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3000);
+  const handleToggleOwnerMode = () => {
+    if (ownerMode) {
+      setAdminCode(null);
+      setStoredAdminCode(null);
+      showToast('Админ эрхээс гарлаа');
+    } else {
+      setIsAdminLoginOpen(true);
+    }
   };
 
-  const handleToggleOwnerMode = () => {
-    const next = !ownerMode;
-    setOwnerMode(next);
-    setStoredOwnerMode(next);
-    showToast(
-      next
-        ? '👑 Эзэмшигчийн горим идэвхжлээ: Та бараа нэмэх, засах, устгах эрхтэй боллоо'
-        : 'Эзэмшигчийн горим унтарлаа'
-    );
+  const handleAdminLoginSuccess = (verifiedCode: string) => {
+    setAdminCode(verifiedCode);
+    setStoredAdminCode(verifiedCode);
+    showToast('Админ эрх амжилттай идэвхжлээ! Оруулсан бараа шууд хадгалагдана.');
   };
 
   const handleSenderNameChange = (name: string) => {
@@ -151,20 +201,28 @@ export default function App() {
     showToast('🎉 Худалдан авалт амжилттай хийгдлээ! Баярлалаа.');
   };
 
-  // Owner item manipulations
+  // Admin item manipulations persisted globally in Firestore
   const handleOpenAddNewItem = (store: Store) => {
+    if (!ownerMode) {
+      setIsAdminLoginOpen(true);
+      return;
+    }
     setEditingStore(store);
     setEditingItem(null);
     setIsItemEditOpen(true);
   };
 
   const handleOpenEditItem = (store: Store, item: StoreItem) => {
+    if (!ownerMode) {
+      setIsAdminLoginOpen(true);
+      return;
+    }
     setEditingStore(store);
     setEditingItem(item);
     setIsItemEditOpen(true);
   };
 
-  const handleSaveItem = (
+  const handleSaveItem = async (
     storeId: string,
     itemData: {
       name: string;
@@ -176,47 +234,33 @@ export default function App() {
     },
     itemId?: string
   ) => {
+    if (!adminCode || adminCode !== ADMIN_ACCESS_CODE) {
+      setIsAdminLoginOpen(true);
+      throw new Error('Админ эрхийн код шаардлагатай');
+    }
+
     if (itemId) {
-      // Edit existing
-      const updated = updateItemInStore(stores, storeId, itemId, itemData);
-      setStores(updated);
-      if (activeStore && activeStore.id === storeId) {
-        const refreshedStore = updated.find((s) => s.id === storeId) || null;
-        setActiveStore(refreshedStore);
-      }
+      await updateStoreItemInFirestore(itemId, itemData, adminCode);
       showToast('Барааны мэдээлэл амжилттай шинэчлэгдлээ');
     } else {
-      // Add new
-      const { updatedStores } = addItemToStore(stores, storeId, itemData);
-      setStores(updatedStores);
-      if (activeStore && activeStore.id === storeId) {
-        const refreshedStore = updatedStores.find((s) => s.id === storeId) || null;
-        setActiveStore(refreshedStore);
-      }
-      showToast('Шинэ бараа амжилттай өргөөнд нэмэгдлээ');
+      await createStoreItemInFirestore(storeId, itemData, adminCode);
+      showToast('Шинэ бараа өгөгдлийн санд бүрэн хадгалагдлаа');
     }
   };
 
-  const handleDeleteItem = (store: Store, itemId: string) => {
+  const handleDeleteItem = async (_store: Store, itemId: string) => {
+    if (!adminCode || adminCode !== ADMIN_ACCESS_CODE) {
+      setIsAdminLoginOpen(true);
+      return;
+    }
     if (window.confirm('Энэ барааг өргөөнөөс хасахдаа итгэлтэй байна уу?')) {
-      const updated = deleteItemFromStore(stores, store.id, itemId);
-      setStores(updated);
-      if (activeStore && activeStore.id === store.id) {
-        const refreshedStore = updated.find((s) => s.id === store.id) || null;
-        setActiveStore(refreshedStore);
+      try {
+        await deleteStoreItemInFirestore(itemId, adminCode);
+        setCart((prev) => prev.filter((c) => c.item.id !== itemId));
+        showToast('Бараа амжилттай устгагдлаа');
+      } catch {
+        showToast('Бараа устгах үед алдаа гарлаа');
       }
-      // Also remove from cart if present
-      setCart((prev) => prev.filter((c) => c.item.id !== itemId));
-      showToast('Бараа хасагдлаа');
-    }
-  };
-
-  const handleResetCatalog = () => {
-    if (window.confirm('Та бүх өргөөний барааг анхны хэвэнд нь буцааж сэргээх үү?')) {
-      const def = resetStoresToDefault();
-      setStores(def);
-      setActiveStore(null);
-      showToast('Бүх 30 өргөө анхны хэвэндээ шинэчлэгдлээ');
     }
   };
 
@@ -244,7 +288,7 @@ export default function App() {
     <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col selection:bg-blue-600 selection:text-white">
       {/* Toast alert banner */}
       {toastMessage && (
-        <div className="fixed top-24 right-5 z-50 max-w-sm px-4 py-3 rounded-2xl bg-[#09153a] border border-amber-400 text-white text-xs font-semibold shadow-2xl shadow-blue-900/60 flex items-center gap-2.5 animate-bounce">
+        <div className="fixed top-24 right-5 z-50 max-w-sm px-4 py-3 rounded-2xl bg-[#09153a] border border-amber-400 text-white text-xs font-semibold shadow-2xl shadow-blue-900/60 flex items-center gap-2.5">
           <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
           <span>{toastMessage}</span>
         </div>
@@ -279,15 +323,8 @@ export default function App() {
           <h2 className="font-cinzel text-xl sm:text-2xl font-bold text-white">
             Саффир улсын нийт худалдааны байгууллагууд
           </h2>
-
-          {ownerMode && (
-            <button
-              onClick={handleResetCatalog}
-              className="px-2.5 py-1 rounded bg-red-950/60 hover:bg-red-900 border border-red-800 text-red-200 text-xs flex items-center gap-1 cursor-pointer"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>Каталог сэргээх</span>
-            </button>
+          {isLoadingItems && (
+            <span className="text-xs text-slate-400">Бараа ачаалж байна...</span>
           )}
         </div>
 
@@ -298,7 +335,6 @@ export default function App() {
 
           return (
             <section key={district.id} className="space-y-3">
-              {/* Plain District Header - only for named districts */}
               {district.name ? (
                 <div className="flex items-baseline justify-between border-b border-blue-900/40 pb-1.5">
                   <div className="flex items-baseline gap-2">
@@ -312,14 +348,13 @@ export default function App() {
                 </div>
               ) : null}
 
-              {/* Mansions arranged downwards in responsive grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {districtStores.map((store, sIdx) => (
                   <MansionCard
                     key={store.id}
                     store={store}
                     index={sIdx}
-                    onOpenStore={(st) => setActiveStore(st)}
+                    onOpenStore={(st) => setActiveStoreId(st.id)}
                     ownerMode={ownerMode}
                     onAddNewItem={handleOpenAddNewItem}
                   />
@@ -345,7 +380,7 @@ export default function App() {
                 setSearchQuery('');
                 setActiveDistrict('all');
               }}
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold"
+              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer"
             >
               Шүүлтүүрийг арилгах
             </button>
@@ -377,18 +412,26 @@ export default function App() {
         </button>
       </div>
 
-      {/* Store Interior Modal (opened by clicking a Mansion's door) */}
+      {/* Store Interior Modal */}
       <StoreModal
         store={activeStore}
-        onClose={() => setActiveStore(null)}
+        onClose={() => setActiveStoreId(null)}
         onAddToCart={handleAddToCart}
         ownerMode={ownerMode}
         onAddNewItem={handleOpenAddNewItem}
         onEditItem={handleOpenEditItem}
         onDeleteItem={handleDeleteItem}
+        onRequestAdminLogin={() => setIsAdminLoginOpen(true)}
       />
 
-      {/* Owner Item Add/Edit Modal */}
+      {/* Admin Login Modal (Code: 54PPH1R3) */}
+      <AdminLoginModal
+        isOpen={isAdminLoginOpen}
+        onClose={() => setIsAdminLoginOpen(false)}
+        onSuccess={handleAdminLoginSuccess}
+      />
+
+      {/* Admin Item Add/Edit Modal */}
       <ItemEditModal
         isOpen={isItemEditOpen}
         onClose={() => {
@@ -415,7 +458,7 @@ export default function App() {
         }}
       />
 
-      {/* Royal Cheques Modal (per store, exact required format) */}
+      {/* Cheques Modal */}
       <ChequeModal
         isOpen={isChequeOpen}
         onClose={() => setIsChequeOpen(false)}
@@ -440,7 +483,7 @@ export default function App() {
               onClick={handleToggleOwnerMode}
               className="hover:text-amber-300 transition-colors cursor-pointer"
             >
-              {ownerMode ? 'Бараа удирдах горим (Идэвхтэй)' : 'Бараа удирдах'}
+              {ownerMode ? 'Админ эрх (Гарах)' : 'Админ нэвтрэх'}
             </button>
             <span>© 2026</span>
           </div>
