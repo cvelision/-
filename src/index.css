@@ -1,0 +1,64 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-cinzel: 'Cinzel', serif;
+    --font-cormorant: 'Cormorant Garamond', serif;
+    --font-sans: 'Plus Jakarta Sans', system-ui, sans-serif;
+  }
+  
+  body {
+    font-family: var(--font-sans);
+    background-color: #050811;
+    color: #cbd5e1;
+    filter: saturate(0.3);
+  }
+}
+
+.font-cinzel {
+  font-family: 'Cinzel', Georgia, serif;
+}
+
+.font-cormorant {
+  font-family: 'Cormorant Garamond', Georgia, serif;
+}
+
+/* Custom royal scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #030712;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e3a8a;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #2563eb;
+}
+
+/* Shimmer & glow effects */
+.sapphire-glow {
+  box-shadow: 0 0 25px -5px rgba(59, 130, 246, 0.4), 0 0 10px -2px rgba(147, 197, 253, 0.3);
+}
+
+.sapphire-border-glow {
+  border-color: rgba(96, 165, 250, 0.4);
+  box-shadow: inset 0 0 20px rgba(37, 99, 235, 0.15), 0 0 15px rgba(59, 130, 246, 0.2);
+}
+
+.gold-glow {
+  box-shadow: 0 0 20px -3px rgba(245, 158, 11, 0.4);
+}
+
+@keyframes pulseSubtle {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.02); }
+}
+
+.animate-subtle-pulse {
+  animation: pulseSubtle 4s ease-in-out infinite;
+}
+

@@ -1,0 +1,6 @@
+{
+  "name": "Sapphirely - Саффир Их Дэлгүүр",
+  "description": "Саффир улсын нэгдсэн худалдааны төв буюу их дэлгүүр. Либертиа хатан хааны төр засаглал.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
