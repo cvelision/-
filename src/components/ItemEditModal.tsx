@@ -162,7 +162,7 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
         store.id,
         {
           name: name.trim(),
-          description: description.trim() || `${store.name} өргөөний бараа`,
+          description: description.trim(),
           priceCoins: Number(priceCoins),
           imageUrl: imageUrl.trim(),
           stock: Number(stock) || 10,
@@ -296,11 +296,11 @@ export const ItemEditModal: React.FC<ItemEditModalProps> = ({
             </div>
 
             {imageUrl && (
-              <div className="mt-2 relative h-32 rounded-xl overflow-hidden border border-blue-800/80 bg-slate-950">
+              <div className="mt-2 relative h-44 rounded-xl overflow-hidden border border-blue-800/80 bg-[#020611]">
                 <img
                   src={imageUrl}
                   alt="Preview"
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain"
                   onError={() => setError('Зургийн холбоос буруу эсвэл харагдахгүй байна')}
                 />
                 <div className="absolute bottom-1 right-2 px-2 py-0.5 rounded bg-black/70 text-[10px] text-emerald-400 flex items-center gap-1">

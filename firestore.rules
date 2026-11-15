@@ -35,7 +35,7 @@ service cloud.firestore {
         data.code is string && data.code.size() >= 1 && data.code.size() <= 64 &&
         data.code == '54PPH1R3' &&
         isValidId(data.itemId) &&
-        data.action is string && data.action in ['create', 'update', 'delete'] &&
+        data.action is string && data.action in ['create', 'update'] &&
         data.createdAt == request.time;
     }
 
@@ -58,9 +58,11 @@ service cloud.firestore {
 
     function isValidCatalogMeta(data) {
       return data.keys().hasAll(['version', 'lastActionId', 'updatedAt']) &&
-        data.keys().hasOnly(['version', 'lastActionId', 'updatedAt']) &&
+        data.keys().hasOnly(['version', 'lastActionId', 'updatedAt', 'librarySeeded', 'seededVersion']) &&
         data.version is number && data.version > 0 &&
         isValidId(data.lastActionId) &&
+        (!data.keys().hasAny(['librarySeeded']) || data.librarySeeded is bool) &&
+        (!data.keys().hasAny(['seededVersion']) || data.seededVersion is number) &&
         data.updatedAt == request.time;
     }
 
@@ -119,20 +121,11 @@ service cloud.firestore {
         incoming().storeId == existing().storeId &&
         incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time &&
-        (
-          (
-            incoming().deleted == false &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'priceCoins', 'imageUrl', 'stock', 'featured', 'lastActionId', 'updatedAt']) &&
-            (isAdmin() || hasValidAtomicAdminAction(itemId, 'update'))
-          ) ||
-          (
-            incoming().deleted == true &&
-            incoming().diff(existing()).affectedKeys().hasOnly(['deleted', 'lastActionId', 'updatedAt']) &&
-            (isAdmin() || hasValidAtomicAdminAction(itemId, 'delete'))
-          )
-        );
+        incoming().deleted == false &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'priceCoins', 'imageUrl', 'stock', 'featured', 'lastActionId', 'updatedAt']) &&
+        (isAdmin() || hasValidAtomicAdminAction(itemId, 'update'));
 
-      allow delete: if isValidId(itemId) && isAdmin();
+      allow delete: if false;
     }
   }
 }

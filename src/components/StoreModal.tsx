@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Store, StoreItem } from '../types';
-import { X, Plus, Edit2, Trash2, CheckCircle, ShoppingBag, Lock } from 'lucide-react';
+import { X, Plus, Edit2, CheckCircle, ShoppingBag, Lock } from 'lucide-react';
 import { playCoinSound } from '../utils/audio';
 
 interface StoreModalProps {
@@ -11,7 +11,6 @@ interface StoreModalProps {
   maxItemsPerStore: number;
   onAddNewItem: (store: Store) => void;
   onEditItem: (store: Store, item: StoreItem) => void;
-  onDeleteItem: (store: Store, itemId: string) => void;
   onRequestAdminLogin: () => void;
 }
 
@@ -23,12 +22,17 @@ export const StoreModal: React.FC<StoreModalProps> = ({
   maxItemsPerStore,
   onAddNewItem,
   onEditItem,
-  onDeleteItem,
   onRequestAdminLogin,
 }) => {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [addedItemNotice, setAddedItemNotice] = useState<string | null>(null);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (store && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = 0;
+    }
+  }, [store?.id]);
 
   if (!store) return null;
 
@@ -55,19 +59,19 @@ export const StoreModal: React.FC<StoreModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-6">
       {/* Backdrop */}
       <div
         onClick={onClose}
         className="fixed inset-0 bg-black/80 backdrop-blur-sm"
       />
 
-      {/* Main Container */}
-      <div className="relative w-full max-w-4xl bg-[#070e20] rounded-xl border border-slate-800 shadow-2xl z-10 flex flex-col max-h-[90vh] overflow-hidden">
-        {/* Simple Clean Header */}
-        <div className="p-4 bg-[#091228] border-b border-slate-800 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <h2 className="font-cinzel text-xl font-bold text-slate-100 truncate">
+      {/* Main Container: Fullscreen top-to-bottom on mobile, centered modal on larger screens */}
+      <div className="relative w-full max-w-4xl bg-[#070e20] rounded-none sm:rounded-xl border-0 sm:border border-slate-800 shadow-2xl z-10 flex flex-col h-[100dvh] sm:h-auto sm:max-h-[90vh] overflow-hidden">
+        {/* Compact Clean Header */}
+        <div className="px-3 py-2.5 sm:p-4 bg-[#091228] border-b border-slate-800 flex items-center justify-between gap-2 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="font-cinzel text-base sm:text-xl font-bold text-slate-100 truncate">
               {store.name}
             </h2>
             <span className="text-[11px] px-2 py-0.5 rounded bg-slate-900 border border-slate-700 text-slate-300 shrink-0">
@@ -80,8 +84,12 @@ export const StoreModal: React.FC<StoreModalProps> = ({
               <button
                 onClick={() => onAddNewItem(store)}
                 disabled={isStoreFull}
-                title={isStoreFull ? `Энэ дэлгүүрийн ${maxItemsPerStore} барааны багтаамж дүүрсэн байна` : 'Бараа нэмэх'}
-                className="px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-amber-300 border border-slate-700 text-xs flex items-center gap-1 cursor-pointer"
+                title={
+                  isStoreFull
+                    ? `Энэ дэлгүүрийн ${maxItemsPerStore} барааны багтаамж дүүрсэн байна`
+                    : 'Бараа нэмэх'
+                }
+                className="px-2.5 sm:px-3 py-1.5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-amber-300 border border-slate-700 text-xs flex items-center gap-1 cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>{isStoreFull ? 'Багтаамж дүүрсэн' : 'Бараа нэмэх'}</span>
@@ -98,14 +106,18 @@ export const StoreModal: React.FC<StoreModalProps> = ({
             <button
               onClick={onClose}
               className="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              aria-label="Хаах"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
         </div>
 
-        {/* Items List */}
-        <div className="p-4 sm:p-6 overflow-y-auto flex-1">
+        {/* Items List — starts right at the top and scrolls straight down */}
+        <div
+          ref={scrollContainerRef}
+          className="p-3 sm:p-6 overflow-y-auto flex-1 overscroll-contain"
+        >
           {store.items.length === 0 ? (
             <div className="text-center py-12 text-slate-400 text-sm space-y-3">
               <p>Одоогоор бараа ороогүй байна.</p>
@@ -137,56 +149,25 @@ export const StoreModal: React.FC<StoreModalProps> = ({
                 return (
                   <div
                     key={item.id}
-                    className="bg-[#050a18] rounded-lg border border-slate-800 p-3.5 flex flex-col justify-between space-y-3"
+                    className="bg-[#050a18] rounded-lg border border-slate-800 p-3 flex flex-col justify-between space-y-3"
                   >
-                    {/* Item Image */}
-                    <div className="relative h-36 rounded overflow-hidden bg-slate-950">
+                    {/* Full Uncropped Item Image */}
+                    <div className="relative aspect-square w-full rounded overflow-hidden bg-[#020611] border border-slate-800/70">
                       <img
                         src={item.imageUrl}
                         alt={item.name}
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-contain"
                         loading="lazy"
                       />
                       {ownerMode && (
                         <div className="absolute top-2 right-2 flex gap-1">
-                          {confirmDeleteId === item.id ? (
-                            <div className="flex items-center gap-1 bg-black/85 border border-red-500/60 rounded px-1.5 py-0.5">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setConfirmDeleteId(null);
-                                  onDeleteItem(store, item.id);
-                                }}
-                                className="text-[10px] font-bold text-red-400 hover:text-red-300 px-1 cursor-pointer"
-                              >
-                                Устгах
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setConfirmDeleteId(null)}
-                                className="text-[10px] text-slate-300 hover:text-white px-1 cursor-pointer"
-                              >
-                                Болих
-                              </button>
-                            </div>
-                          ) : (
-                            <>
-                              <button
-                                onClick={() => onEditItem(store, item)}
-                                className="p-1 rounded bg-black/70 hover:bg-slate-800 text-white cursor-pointer"
-                                title="Засах"
-                              >
-                                <Edit2 className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={() => setConfirmDeleteId(item.id)}
-                                className="p-1 rounded bg-black/70 hover:bg-red-800 text-white cursor-pointer"
-                                title="Устгах"
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </button>
-                            </>
-                          )}
+                          <button
+                            onClick={() => onEditItem(store, item)}
+                            className="p-1.5 rounded bg-black/75 hover:bg-slate-800 text-white cursor-pointer"
+                            title="Засах"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       )}
                     </div>
@@ -197,7 +178,7 @@ export const StoreModal: React.FC<StoreModalProps> = ({
                         {item.name}
                       </h4>
                       {item.description && (
-                        <p className="text-xs text-slate-400 line-clamp-1 mt-0.5">
+                        <p className="text-xs text-slate-400 line-clamp-2 mt-0.5">
                           {item.description}
                         </p>
                       )}
@@ -205,6 +186,13 @@ export const StoreModal: React.FC<StoreModalProps> = ({
 
                     {/* Price & Quantity & Live Calc */}
                     <div className="space-y-2 pt-2 border-t border-slate-800">
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-slate-400">Үлдэгдэл:</span>
+                        <span className="text-slate-200 font-semibold">
+                          {(item.stock ?? 30).toLocaleString()} ш
+                        </span>
+                      </div>
+
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-slate-400">Нэгжийн үнэ:</span>
                         <span className="text-amber-300 font-bold">
@@ -280,7 +268,7 @@ export const StoreModal: React.FC<StoreModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-3 bg-[#050a18] border-t border-slate-800 flex justify-end">
+        <div className="px-3 py-2.5 sm:p-3 bg-[#050a18] border-t border-slate-800 flex justify-end shrink-0">
           <button
             onClick={onClose}
             className="px-4 py-1.5 rounded bg-slate-900 hover:bg-slate-800 text-xs text-slate-300 cursor-pointer"

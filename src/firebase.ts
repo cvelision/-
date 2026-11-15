@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 import { StoreItem } from './types';
+import { BUILTIN_INITIAL_ITEMS } from './data/initialStores';
 
 const app = initializeApp(firebaseConfig);
 export const db = initializeFirestore(
@@ -36,9 +37,18 @@ export const FIRESTORE_UPGRADE_URL = `https://console.firebase.google.com/projec
 
 const VERSION_KEY = 'sapphirely_catalog_version_v2';
 const LEGACY_CACHE_KEY = 'sapphirely_items_cache_v1';
+const SEED_VERSION_KEY = 'sapphirely_seed_version_v4';
+const CURRENT_SEED_VERSION = 4;
 const IDB_NAME = 'sapphirely_catalog_idb_v1';
 const IDB_STORE = 'catalog';
 const IDB_ITEMS_KEY = 'all_items';
+
+const RETIRED_BUILTIN_ITEM_IDS = new Set<string>(['obs-item-09']);
+const LEGACY_BROKEN_IMAGE_BY_ID: Record<string, string> = {
+  'obs-item-01': '/assets/aistudio/Messenger_creation_09C9A8A9-A7ED-4EC6-B809-7561B9A673B8_4edd9447.jpeg',
+  'obs-item-11': '/assets/aistudio/Messenger_creation_7E3CCB93-0A95-410F-9CE0-300735A16455_ea353938.jpeg',
+};
+const BUILTIN_ITEMS_BY_ID = new Map(BUILTIN_INITIAL_ITEMS.map((it) => [it.id, it]));
 
 export enum OperationType {
   CREATE = 'create',
@@ -278,16 +288,159 @@ function mapDocToStoreItem(docId: string, data: Record<string, unknown>): StoreI
   };
 }
 
+export function isLibrarySeededLocally(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return Number(localStorage.getItem(SEED_VERSION_KEY)) === CURRENT_SEED_VERSION;
+  } catch {
+    return false;
+  }
+}
+
+function setLibrarySeededLocally(seeded: boolean) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (seeded) {
+      localStorage.setItem(SEED_VERSION_KEY, String(CURRENT_SEED_VERSION));
+    } else {
+      localStorage.removeItem(SEED_VERSION_KEY);
+    }
+  } catch {
+    // Ignore
+  }
+}
+
+export function mergeWithFallbackLibraryItems(
+  items: StoreItem[],
+  _isSeededOnServer?: boolean
+): StoreItem[] {
+  const cleaned = items
+    .filter((it) => !RETIRED_BUILTIN_ITEM_IDS.has(it.id))
+    .map((it) => {
+      const brokenUrl = LEGACY_BROKEN_IMAGE_BY_ID[it.id];
+      const canonical = BUILTIN_ITEMS_BY_ID.get(it.id);
+      if (brokenUrl && canonical && it.imageUrl === brokenUrl) {
+        return { ...it, imageUrl: canonical.imageUrl };
+      }
+      return it;
+    });
+  const existingIds = new Set(cleaned.map((it) => it.id));
+  const missing = BUILTIN_INITIAL_ITEMS.filter((it) => !existingIds.has(it.id));
+  return missing.length > 0 ? [...cleaned, ...missing] : cleaned;
+}
+
 export async function fetchAllItemsFromServer(): Promise<StoreItem[]> {
   const itemsPath = 'items';
   const q = query(collection(db, itemsPath), where('deleted', '==', false));
   const snapshot = await getDocsFromServer(q);
   const loaded: StoreItem[] = [];
   snapshot.forEach((docSnap) => {
-    loaded.push(mapDocToStoreItem(docSnap.id, docSnap.data() as Record<string, unknown>));
+    const mapped = mapDocToStoreItem(docSnap.id, docSnap.data() as Record<string, unknown>);
+    if (!RETIRED_BUILTIN_ITEM_IDS.has(mapped.id)) {
+      loaded.push(mapped);
+    }
   });
   loaded.sort((a, b) => (b.createdAtMs || 0) - (a.createdAtMs || 0));
   return loaded;
+}
+
+async function seedBuiltinItemsInFirestore(existingItems: StoreItem[]): Promise<StoreItem[]> {
+  const activeExisting = existingItems.filter((it) => !RETIRED_BUILTIN_ITEM_IDS.has(it.id));
+  const existingMap = new Map(activeExisting.map((it) => [it.id, it]));
+  const missing = BUILTIN_INITIAL_ITEMS.filter((it) => !existingMap.has(it.id));
+  const itemsNeedingImageRepair = BUILTIN_INITIAL_ITEMS.filter((canonical) => {
+    const current = existingMap.get(canonical.id);
+    const brokenUrl = LEGACY_BROKEN_IMAGE_BY_ID[canonical.id];
+    return Boolean(current && brokenUrl && current.imageUrl === brokenUrl);
+  });
+
+  const nextVersion = Date.now();
+  const batch = writeBatch(db);
+  let lastActionId = generateSafeId('seedmeta');
+
+  if (missing.length === 0 && itemsNeedingImageRepair.length === 0) {
+    batch.set(doc(db, 'adminActions', lastActionId), {
+      code: ADMIN_ACCESS_CODE,
+      itemId: 'builtin-seed-meta',
+      action: 'create',
+      createdAt: serverTimestamp(),
+    });
+  } else {
+    missing.forEach((item, idx) => {
+      const actionId = generateSafeId(`seed${idx}`);
+      lastActionId = actionId;
+      batch.set(doc(db, 'adminActions', actionId), {
+        code: ADMIN_ACCESS_CODE,
+        itemId: item.id,
+        action: 'create',
+        createdAt: serverTimestamp(),
+      });
+      batch.set(doc(db, 'items', item.id), {
+        id: item.id,
+        storeId: item.storeId,
+        name: item.name,
+        description: item.description,
+        priceCoins: item.priceCoins,
+        imageUrl: item.imageUrl,
+        stock: item.stock ?? 30,
+        featured: Boolean(item.featured),
+        deleted: false,
+        lastActionId: actionId,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+    });
+
+    itemsNeedingImageRepair.forEach((canonical, idx) => {
+      const current = existingMap.get(canonical.id)!;
+      const actionId = generateSafeId(`fix${idx}`);
+      lastActionId = actionId;
+      batch.set(doc(db, 'adminActions', actionId), {
+        code: ADMIN_ACCESS_CODE,
+        itemId: canonical.id,
+        action: 'update',
+        createdAt: serverTimestamp(),
+      });
+      batch.update(doc(db, 'items', canonical.id), {
+        name: current.name,
+        description: current.description,
+        priceCoins: current.priceCoins,
+        imageUrl: canonical.imageUrl,
+        stock: current.stock ?? canonical.stock ?? 30,
+        featured: Boolean(current.featured),
+        lastActionId: actionId,
+        updatedAt: serverTimestamp(),
+      });
+    });
+  }
+
+  batch.set(doc(db, 'meta', 'catalog'), {
+    version: nextVersion,
+    lastActionId,
+    librarySeeded: true,
+    seededVersion: CURRENT_SEED_VERSION,
+    updatedAt: serverTimestamp(),
+  });
+
+  await batch.commit();
+  setLibrarySeededLocally(true);
+
+  const repairedExisting = activeExisting.map((it) => {
+    const brokenUrl = LEGACY_BROKEN_IMAGE_BY_ID[it.id];
+    const canonical = BUILTIN_ITEMS_BY_ID.get(it.id);
+    if (brokenUrl && canonical && it.imageUrl === brokenUrl) {
+      return { ...it, imageUrl: canonical.imageUrl };
+    }
+    return it;
+  });
+
+  const seededWithTs: StoreItem[] = missing.map((it, idx) => ({
+    ...it,
+    createdAtMs: nextVersion - idx,
+  }));
+  const combined = [...repairedExisting, ...seededWithTs];
+  await saveCachedItemsAsync(combined, nextVersion);
+  return combined;
 }
 
 /**
@@ -301,12 +454,14 @@ export function subscribeToItems(
   let active = true;
   let isFetching = false;
   let hasDeliveredInitialCache = false;
+  let hasAttemptedSeed = false;
 
   const deliverCachedFirst = async (): Promise<StoreItem[]> => {
     const cached = await getCachedItemsAsync();
-    if (active && !hasDeliveredInitialCache && cached.length > 0) {
+    const displayItems = mergeWithFallbackLibraryItems(cached);
+    if (active && !hasDeliveredInitialCache && displayItems.length > 0) {
       hasDeliveredInitialCache = true;
-      onItems(cached);
+      onItems(displayItems);
     }
     return cached;
   };
@@ -323,12 +478,18 @@ export function subscribeToItems(
         metaSnap.exists() && typeof metaSnap.data()?.version === 'number'
           ? (metaSnap.data().version as number)
           : 0;
+      const isSeededRemote =
+        metaSnap.exists() && metaSnap.data()?.seededVersion === CURRENT_SEED_VERSION;
+      if (isSeededRemote) {
+        setLibrarySeededLocally(true);
+      }
+
       const localVersion = getLocalCatalogVersion();
       const cached = await deliverCachedFirst();
 
-      // Skip full collection read when local IndexedDB cache matches the remote catalog version
-      if (localVersion !== null && remoteVersion === localVersion) {
-        onItems(cached);
+      // Skip full collection read when local IndexedDB cache matches the remote catalog version and seeding is already done
+      if (isSeededRemote && localVersion !== null && remoteVersion === localVersion) {
+        onItems(mergeWithFallbackLibraryItems(cached));
         return;
       }
 
@@ -338,14 +499,38 @@ export function subscribeToItems(
       try {
         const freshItems = await fetchAllItemsFromServer();
         if (!active) return;
+
+        if (!isSeededRemote && !hasAttemptedSeed) {
+          hasAttemptedSeed = true;
+          try {
+            const seededItems = await seedBuiltinItemsInFirestore(freshItems);
+            if (!active) return;
+            onItems(seededItems);
+            return;
+          } catch (seedErr) {
+            if (!active) return;
+            const fallback = mergeWithFallbackLibraryItems(freshItems);
+            onItems(fallback);
+            if (isQuotaExceededError(seedErr) && onError) {
+              onError(
+                seedErr instanceof Error ? seedErr : new Error('Quota limit exceeded.'),
+                true
+              );
+            }
+            return;
+          }
+        }
+
         await saveCachedItemsAsync(freshItems, remoteVersion);
-        onItems(freshItems);
+        onItems(mergeWithFallbackLibraryItems(freshItems));
       } catch (error) {
         if (!active) return;
+        const fallback = mergeWithFallbackLibraryItems(cached);
+        if (fallback.length > 0) {
+          onItems(fallback);
+        }
+
         if (isQuotaExceededError(error)) {
-          if (cached.length > 0) {
-            onItems(cached);
-          }
           if (onError) {
             onError(
               error instanceof Error ? error : new Error('Quota limit exceeded.'),
@@ -376,8 +561,9 @@ export function subscribeToItems(
     async (error) => {
       if (!active) return;
       const cached = await getCachedItemsAsync();
-      if (cached.length > 0) {
-        onItems(cached);
+      const fallback = mergeWithFallbackLibraryItems(cached, isLibrarySeededLocally());
+      if (fallback.length > 0) {
+        onItems(fallback);
       }
 
       if (isQuotaExceededError(error)) {
@@ -451,6 +637,8 @@ export async function createStoreItemInFirestore(
     batch.set(doc(db, 'meta', 'catalog'), {
       version: nextVersion,
       lastActionId: actionId,
+      librarySeeded: true,
+      seededVersion: CURRENT_SEED_VERSION,
       updatedAt: serverTimestamp(),
     });
     await batch.commit();
@@ -506,6 +694,8 @@ export async function updateStoreItemInFirestore(
     batch.set(doc(db, 'meta', 'catalog'), {
       version: nextVersion,
       lastActionId: actionId,
+      librarySeeded: true,
+      seededVersion: CURRENT_SEED_VERSION,
       updatedAt: serverTimestamp(),
     });
     await batch.commit();
@@ -520,44 +710,5 @@ export async function updateStoreItemInFirestore(
       throw new Error('Өдрийн үнэгүй лимит (Quota limit exceeded) дууссан байна.');
     }
     handleFirestoreError(error, OperationType.UPDATE, itemPath);
-  }
-}
-
-export async function deleteStoreItemInFirestore(
-  itemId: string,
-  adminCode: string
-): Promise<void> {
-  const actionId = generateSafeId('act');
-  const itemPath = `items/${itemId}`;
-  const nextVersion = Date.now();
-
-  try {
-    const batch = writeBatch(db);
-    batch.set(doc(db, 'adminActions', actionId), {
-      code: adminCode,
-      itemId,
-      action: 'delete',
-      createdAt: serverTimestamp(),
-    });
-    batch.update(doc(db, 'items', itemId), {
-      deleted: true,
-      lastActionId: actionId,
-      updatedAt: serverTimestamp(),
-    });
-    batch.set(doc(db, 'meta', 'catalog'), {
-      version: nextVersion,
-      lastActionId: actionId,
-      updatedAt: serverTimestamp(),
-    });
-    await batch.commit();
-
-    const existing = await getCachedItemsAsync();
-    const updatedCache = existing.filter((item) => item.id !== itemId);
-    await saveCachedItemsAsync(updatedCache, nextVersion);
-  } catch (error) {
-    if (isQuotaExceededError(error)) {
-      throw new Error('Өдрийн үнэгүй лимит (Quota limit exceeded) дууссан байна.');
-    }
-    handleFirestoreError(error, OperationType.DELETE, itemPath);
   }
 }

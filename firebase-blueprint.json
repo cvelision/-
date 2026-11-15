@@ -127,6 +127,14 @@
           "maxLength": 128,
           "description": "ID of the atomic AdminAction that bumped the version"
         },
+        "librarySeeded": {
+          "type": "boolean",
+          "description": "Whether built-in library items have been seeded"
+        },
+        "seededVersion": {
+          "type": "number",
+          "description": "Version number of built-in seeded catalog items"
+        },
         "updatedAt": {
           "type": "string",
           "format": "date-time",

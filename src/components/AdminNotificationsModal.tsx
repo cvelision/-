@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { StoreItem } from '../types';
-import { Bell, BellRing, CheckCheck, ExternalLink, X } from 'lucide-react';
+import { Bell, BellRing, CheckCheck, Copy, Check, ExternalLink, X } from 'lucide-react';
 
 export interface AdminNotificationEntry {
   item: StoreItem;
@@ -43,7 +43,38 @@ export const AdminNotificationsModal: React.FC<AdminNotificationsModalProps> = (
   onMarkAllRead,
   onOpenStore,
 }) => {
+  const [copiedCode, setCopiedCode] = useState(false);
+
   if (!isOpen) return null;
+
+  const customItems = notifications
+    .map((n) => n.item)
+    .filter((it) => !it.id.startsWith('lib-item-') && !it.id.startsWith('obs-item-'));
+
+  const handleCopyItemsCode = async () => {
+    const targetItems = customItems.length > 0 ? customItems : notifications.map((n) => n.item);
+    const serialized = JSON.stringify(
+      targetItems.map((it) => ({
+        id: it.id,
+        storeId: it.storeId,
+        name: it.name,
+        description: it.description,
+        priceCoins: it.priceCoins,
+        imageUrl: it.imageUrl,
+        stock: it.stock ?? 30,
+        featured: Boolean(it.featured),
+      })),
+      null,
+      2
+    );
+    try {
+      await navigator.clipboard.writeText(serialized);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2500);
+    } catch {
+      // Ignore clipboard failure
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -118,7 +149,7 @@ export const AdminNotificationsModal: React.FC<AdminNotificationsModalProps> = (
                 <img
                   src={entry.item.imageUrl}
                   alt={entry.item.name}
-                  className="w-12 h-12 rounded-lg object-cover bg-slate-950 border border-slate-800 shrink-0"
+                  className="w-12 h-12 rounded-lg object-contain bg-[#020611] border border-slate-800 shrink-0"
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
@@ -153,16 +184,36 @@ export const AdminNotificationsModal: React.FC<AdminNotificationsModalProps> = (
         </div>
 
         {/* Footer */}
-        <div className="p-3 bg-[#050a18] border-t border-slate-800 flex items-center justify-between">
-          <button
-            type="button"
-            onClick={onMarkAllRead}
-            disabled={unreadCount === 0}
-            className="px-3 py-1.5 rounded bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-xs text-amber-300 flex items-center gap-1.5 cursor-pointer"
-          >
-            <CheckCheck className="w-3.5 h-3.5" />
-            <span>Бүгдийг уншсан болгох</span>
-          </button>
+        <div className="p-3 bg-[#050a18] border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onMarkAllRead}
+              disabled={unreadCount === 0}
+              className="px-3 py-1.5 rounded bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-xs text-amber-300 flex items-center gap-1.5 cursor-pointer"
+            >
+              <CheckCheck className="w-3.5 h-3.5" />
+              <span>Бүгдийг уншсан болгох</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleCopyItemsCode}
+              disabled={notifications.length === 0}
+              className="px-3 py-1.5 rounded bg-blue-950 hover:bg-blue-900 disabled:opacity-40 border border-blue-800/70 text-xs text-blue-200 flex items-center gap-1.5 cursor-pointer"
+            >
+              {copiedCode ? (
+                <>
+                  <Check className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-emerald-300">Хуулагдлаа</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Код хуулах</span>
+                </>
+              )}
+            </button>
+          </div>
           <button
             type="button"
             onClick={onClose}

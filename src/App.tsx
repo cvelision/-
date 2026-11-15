@@ -15,13 +15,13 @@ import {
 import {
   ADMIN_ACCESS_CODE,
   MAX_ITEMS_PER_STORE,
-  FIRESTORE_UPGRADE_URL,
   getCachedItems,
   getCachedItemsAsync,
+  isLibrarySeededLocally,
+  mergeWithFallbackLibraryItems,
   subscribeToItems,
   createStoreItemInFirestore,
   updateStoreItemInFirestore,
-  deleteStoreItemInFirestore,
 } from './firebase';
 import { Header } from './components/Header';
 import { WelcomeHero } from './components/WelcomeHero';
@@ -54,7 +54,9 @@ function getInitialSeenIds(): Set<string> {
 }
 
 export default function App() {
-  const [cloudItems, setCloudItems] = useState<StoreItem[]>(() => getCachedItems());
+  const [cloudItems, setCloudItems] = useState<StoreItem[]>(() =>
+    mergeWithFallbackLibraryItems(getCachedItems(), isLibrarySeededLocally())
+  );
   const [isLoadingItems, setIsLoadingItems] = useState<boolean>(true);
   const [quotaExceeded, setQuotaExceeded] = useState<boolean>(false);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -190,9 +192,10 @@ export default function App() {
     }
 
     void getCachedItemsAsync().then((idbItems) => {
-      if (idbItems.length > 0) {
-        setCloudItems(idbItems);
-        idbItems.forEach((it) => knownItemIdsRef.current.add(it.id));
+      const merged = mergeWithFallbackLibraryItems(idbItems, isLibrarySeededLocally());
+      if (merged.length > 0) {
+        setCloudItems(merged);
+        merged.forEach((it) => knownItemIdsRef.current.add(it.id));
       }
     });
 
@@ -239,7 +242,7 @@ export default function App() {
         setIsLoadingItems(false);
         if (isQuota) {
           setQuotaExceeded(true);
-        } else {
+        } else if (getStoredAdminCode() === ADMIN_ACCESS_CODE) {
           showToast('Өгөгдлийн сантай холбогдоход алдаа гарлаа.');
         }
       }
@@ -349,7 +352,7 @@ export default function App() {
     showToast('🎉 Худалдан авалт амжилттай хийгдлээ! Баярлалаа.');
   };
 
-  // Admin item manipulations persisted globally in Firestore
+  // Admin item manipulations persisted permanently in Firestore (deletion disabled)
   const handleOpenAddNewItem = (store: Store) => {
     if (!ownerMode) {
       setIsAdminLoginOpen(true);
@@ -409,21 +412,6 @@ export default function App() {
     }
   };
 
-  const handleDeleteItem = async (_store: Store, itemId: string) => {
-    if (!adminCode || adminCode !== ADMIN_ACCESS_CODE) {
-      setIsAdminLoginOpen(true);
-      return;
-    }
-    try {
-      await deleteStoreItemInFirestore(itemId, adminCode);
-      setCloudItems((prev) => prev.filter((it) => it.id !== itemId));
-      setCart((prev) => prev.filter((c) => c.item.id !== itemId));
-      showToast('Бараа амжилттай устгагдлаа');
-    } catch {
-      showToast('Бараа устгах үед алдаа гарлаа');
-    }
-  };
-
   // Filtered stores
   const filteredStores = stores.filter((store) => {
     const matchesDistrict = activeDistrict === 'all' || store.districtId === activeDistrict;
@@ -478,7 +466,7 @@ export default function App() {
       {/* Main Shopping Avenue: Mansions Section */}
       <main
         ref={mansionsRef}
-        className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-12 md:py-16 space-y-12"
+        className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-5 sm:py-12 md:py-16 space-y-8 sm:space-y-12"
       >
         {/* Section Header */}
         <div className="pb-3 border-b border-blue-900/60 flex items-center justify-between gap-4">
@@ -490,19 +478,11 @@ export default function App() {
           )}
         </div>
 
-        {quotaExceeded && (
-          <div className="p-3.5 rounded-lg bg-amber-950/40 border border-amber-700/50 text-xs text-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        {ownerMode && quotaExceeded && (
+          <div className="p-3.5 rounded-lg bg-amber-950/40 border border-amber-700/50 text-xs text-amber-200">
             <span>
-              Өдрийн үнэгүй унших лимит (Firestore free daily read quota) дууссан тул кэшэд хадгалагдсан барааг харуулж байна. Маргааш автоматаар шинэчлэгдэнэ.
+              Админ мэдэгдэл: Өдрийн үнэгүй унших лимит дууссан тул кэшэд хадгалагдсан барааг харуулж байна.
             </span>
-            <a
-              href={FIRESTORE_UPGRADE_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline font-semibold text-amber-300 hover:text-amber-200 whitespace-nowrap"
-            >
-              Firebase сан шалгах →
-            </a>
           </div>
         )}
 
@@ -599,7 +579,6 @@ export default function App() {
         maxItemsPerStore={MAX_ITEMS_PER_STORE}
         onAddNewItem={handleOpenAddNewItem}
         onEditItem={handleOpenEditItem}
-        onDeleteItem={handleDeleteItem}
         onRequestAdminLogin={() => setIsAdminLoginOpen(true)}
       />
 
