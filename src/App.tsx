@@ -9,11 +9,14 @@ import { DISTRICTS, INITIAL_STORES } from './data/initialStores';
 import {
   getStoredAdminCode,
   setStoredAdminCode,
+  getStoredLordCode,
+  setStoredLordCode,
   getStoredSenderName,
   setStoredSenderName,
 } from './utils/storeStorage';
 import {
   ADMIN_ACCESS_CODE,
+  LORD_ACCESS_CODE,
   MAX_ITEMS_PER_STORE,
   getCachedItems,
   getCachedItemsAsync,
@@ -22,6 +25,7 @@ import {
   subscribeToItems,
   createStoreItemInFirestore,
   updateStoreItemInFirestore,
+  deleteStoreItemInFirestore,
 } from './firebase';
 import { Header } from './components/Header';
 import { WelcomeHero } from './components/WelcomeHero';
@@ -29,6 +33,7 @@ import { MansionCard } from './components/MansionCard';
 import { StoreModal } from './components/StoreModal';
 import { ItemEditModal } from './components/ItemEditModal';
 import { AdminLoginModal } from './components/AdminLoginModal';
+import { LordLoginModal } from './components/LordLoginModal';
 import {
   AdminNotificationsModal,
   AdminNotificationEntry,
@@ -61,6 +66,7 @@ export default function App() {
   const [quotaExceeded, setQuotaExceeded] = useState<boolean>(false);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [adminCode, setAdminCode] = useState<string | null>(null);
+  const [lordCode, setLordCode] = useState<string | null>(null);
   const [senderName, setSenderName] = useState<string>('Эрхэм худалдан авагч');
 
   // Active filters & navigation
@@ -72,6 +78,7 @@ export default function App() {
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [isChequeOpen, setIsChequeOpen] = useState<boolean>(false);
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState<boolean>(false);
+  const [isLordLoginOpen, setIsLordLoginOpen] = useState<boolean>(false);
   const [isAdminNotifOpen, setIsAdminNotifOpen] = useState<boolean>(false);
 
   // Admin notification state
@@ -97,6 +104,7 @@ export default function App() {
   const mansionsRef = useRef<HTMLDivElement>(null);
 
   const ownerMode = adminCode === ADMIN_ACCESS_CODE;
+  const lordMode = ownerMode && lordCode === LORD_ACCESS_CODE;
 
   const storeNameMap = useMemo<Record<string, string>>(() => {
     const map: Record<string, string> = {};
@@ -110,10 +118,11 @@ export default function App() {
   const stores = useMemo<Store[]>(() => {
     const itemsByStore: Record<string, StoreItem[]> = {};
     cloudItems.forEach((it) => {
-      if (!itemsByStore[it.storeId]) {
-        itemsByStore[it.storeId] = [];
+      const targetStoreId = it.storeId === 'stationery' ? 'library' : it.storeId;
+      if (!itemsByStore[targetStoreId]) {
+        itemsByStore[targetStoreId] = [];
       }
-      itemsByStore[it.storeId].push(it);
+      itemsByStore[targetStoreId].push(it);
     });
 
     return INITIAL_STORES.map((baseStore) => ({
@@ -171,10 +180,17 @@ export default function App() {
   // Subscribe to version-gated Firestore items & restore local session preferences
   useEffect(() => {
     const savedCode = getStoredAdminCode();
+    const savedLordCode = getStoredLordCode();
     if (savedCode === ADMIN_ACCESS_CODE) {
       setAdminCode(savedCode);
-    } else if (savedCode) {
-      setStoredAdminCode(null);
+      if (savedLordCode === LORD_ACCESS_CODE) {
+        setLordCode(savedLordCode);
+      } else if (savedLordCode) {
+        setStoredLordCode(null);
+      }
+    } else {
+      if (savedCode) setStoredAdminCode(null);
+      if (savedLordCode) setStoredLordCode(null);
     }
 
     setSenderName(getStoredSenderName());
@@ -266,6 +282,7 @@ export default function App() {
       isCartOpen ||
       isChequeOpen ||
       isAdminLoginOpen ||
+      isLordLoginOpen ||
       isAdminNotifOpen ||
       isItemEditOpen
   );
@@ -305,7 +322,10 @@ export default function App() {
     if (ownerMode) {
       setAdminCode(null);
       setStoredAdminCode(null);
+      setLordCode(null);
+      setStoredLordCode(null);
       setIsAdminNotifOpen(false);
+      setIsLordLoginOpen(false);
       showToast('Админ эрхээс гарлаа');
     } else {
       setIsAdminLoginOpen(true);
@@ -316,6 +336,26 @@ export default function App() {
     setAdminCode(verifiedCode);
     setStoredAdminCode(verifiedCode);
     showToast('Админ эрх амжилттай идэвхжлээ! Оруулсан бараа шууд хадгалагдана.');
+  };
+
+  const handleToggleLordMode = () => {
+    if (!ownerMode) {
+      setIsAdminLoginOpen(true);
+      return;
+    }
+    if (lordMode) {
+      setLordCode(null);
+      setStoredLordCode(null);
+      showToast('Lord тохиргооноос гарлаа');
+    } else {
+      setIsLordLoginOpen(true);
+    }
+  };
+
+  const handleLordLoginSuccess = (verifiedCode: string) => {
+    setLordCode(verifiedCode);
+    setStoredLordCode(verifiedCode);
+    showToast('Lord тохиргоо идэвхжлээ! Бараа хасах боломжтой.');
   };
 
   const handleSenderNameChange = (name: string) => {
@@ -370,7 +410,7 @@ export default function App() {
     showToast('🎉 Худалдан авалт амжилттай хийгдлээ! Баярлалаа.');
   };
 
-  // Admin item manipulations persisted permanently in Firestore (deletion disabled)
+  // Admin item manipulations persisted in Firestore
   const handleOpenAddNewItem = (store: Store) => {
     if (!ownerMode) {
       setIsAdminLoginOpen(true);
@@ -413,7 +453,7 @@ export default function App() {
     }
 
     if (itemId) {
-      await updateStoreItemInFirestore(itemId, itemData, adminCode);
+      await updateStoreItemInFirestore(itemId, itemData, adminCode, storeId);
       setCloudItems((prev) =>
         prev.map((it) => (it.id === itemId ? { ...it, ...itemData } : it))
       );
@@ -428,6 +468,22 @@ export default function App() {
       setCloudItems((prev) => [createdItem, ...prev.filter((i) => i.id !== createdItem.id)]);
       notifyAdminOfNewItem(createdItem);
     }
+  };
+
+  const handleDeleteItem = async (_store: Store, item: StoreItem) => {
+    if (!ownerMode) {
+      setIsAdminLoginOpen(true);
+      throw new Error('Админ эрхээр эхэлж нэвтэрнэ үү');
+    }
+    if (!lordCode || lordCode !== LORD_ACCESS_CODE) {
+      setIsLordLoginOpen(true);
+      throw new Error('Lord тохиргооны код шаардлагатай');
+    }
+
+    await deleteStoreItemInFirestore(item.id, lordCode);
+    setCloudItems((prev) => prev.filter((it) => it.id !== item.id));
+    setCart((prev) => prev.filter((c) => c.item.id !== item.id));
+    showToast(`"${item.name}" бараа хасагдлаа`);
   };
 
   // Filtered stores
@@ -451,11 +507,11 @@ export default function App() {
   const totalCartCount = cart.reduce((sum, c) => sum + c.quantity, 0);
 
   return (
-    <div className="min-h-screen bg-[#030712] text-slate-100 flex flex-col selection:bg-blue-600 selection:text-white">
+    <div className="min-h-screen bg-[#06080f] text-slate-100 flex flex-col selection:bg-[#49576e] selection:text-white">
       {/* Toast alert banner */}
       {toastMessage && (
-        <div className="fixed top-24 right-5 z-50 max-w-sm px-4 py-3 rounded-2xl bg-[#09153a] border border-amber-400 text-white text-xs font-semibold shadow-2xl shadow-blue-900/60 flex items-center gap-2.5">
-          <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+        <div className="fixed top-24 right-5 z-50 max-w-sm px-4 py-3 rounded-xl bg-[#0e1422] border border-[#6e6246]/70 text-slate-100 text-xs font-semibold shadow-2xl flex items-center gap-2.5">
+          <Sparkles className="w-4 h-4 text-[#c8ba96] shrink-0" />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -463,9 +519,12 @@ export default function App() {
       {/* Main Navigation Header */}
       <Header
         totalCartCount={totalCartCount}
+        totalStoreCount={INITIAL_STORES.length}
         onOpenCart={() => setIsCartOpen(true)}
         ownerMode={ownerMode}
         onToggleOwnerMode={handleToggleOwnerMode}
+        lordMode={lordMode}
+        onToggleLordMode={handleToggleLordMode}
         adminUnreadCount={adminUnreadCount}
         onOpenAdminNotifications={() => setIsAdminNotifOpen(true)}
         activeDistrict={activeDistrict}
@@ -487,8 +546,8 @@ export default function App() {
         className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-5 sm:py-12 md:py-16 space-y-8 sm:space-y-12"
       >
         {/* Section Header */}
-        <div className="pb-3 border-b border-blue-900/60 flex items-center justify-between gap-4">
-          <h2 className="font-cinzel text-xl sm:text-2xl font-bold text-white">
+        <div className="pb-3 border-b border-slate-800/90 flex items-center justify-between gap-4">
+          <h2 className="font-cinzel text-xl sm:text-2xl font-bold text-slate-100">
             Саффир улсын нийт худалдааны байгууллагууд
           </h2>
           {isLoadingItems && (
@@ -497,7 +556,7 @@ export default function App() {
         </div>
 
         {ownerMode && quotaExceeded && (
-          <div className="p-3.5 rounded-lg bg-amber-950/40 border border-amber-700/50 text-xs text-amber-200">
+          <div className="p-3.5 rounded-lg bg-[#1d1912] border border-[#594f3a]/60 text-xs text-[#d4c7a5]">
             <span>
               Админ мэдэгдэл: Өдрийн үнэгүй унших лимит дууссан тул кэшэд хадгалагдсан барааг харуулж байна.
             </span>
@@ -512,9 +571,9 @@ export default function App() {
           return (
             <section key={district.id} className="space-y-3">
               {district.name ? (
-                <div className="flex items-baseline justify-between border-b border-blue-900/40 pb-1.5">
+                <div className="flex items-baseline justify-between border-b border-slate-800/70 pb-1.5">
                   <div className="flex items-baseline gap-2">
-                    <h3 className="font-cinzel text-base sm:text-lg font-bold text-white">
+                    <h3 className="font-cinzel text-base sm:text-lg font-bold text-slate-100">
                       {district.name}
                     </h3>
                     <span className="text-xs text-slate-400">
@@ -541,14 +600,14 @@ export default function App() {
         })}
 
         {filteredStores.length === 0 && (
-          <div className="text-center py-20 bg-blue-950/20 rounded-3xl border border-dashed border-blue-900/60 p-6 space-y-4">
-            <div className="w-16 h-16 rounded-full bg-blue-950 mx-auto flex items-center justify-center text-2xl">
+          <div className="text-center py-20 bg-[#0b101b] rounded-3xl border border-dashed border-slate-800 p-6 space-y-4">
+            <div className="w-16 h-16 rounded-full bg-[#111726] mx-auto flex items-center justify-center text-2xl">
               🔍
             </div>
-            <h4 className="font-cinzel text-lg font-bold text-white">
+            <h4 className="font-cinzel text-lg font-bold text-slate-100">
               Хайлтад тохирох байгууллага олдсонгүй
             </h4>
-            <p className="text-xs text-blue-300 max-w-md mx-auto">
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
               Та өөр үгээр хайх эсвэл бүх дүүргийн шүүлтүүрийг сонгож үзнэ үү.
             </p>
             <button
@@ -556,7 +615,7 @@ export default function App() {
                 setSearchQuery('');
                 setActiveDistrict('all');
               }}
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-[#27344a] hover:bg-[#32425c] border border-slate-600/70 text-slate-100 text-xs font-semibold cursor-pointer"
             >
               Шүүлтүүрийг арилгах
             </button>
@@ -569,11 +628,11 @@ export default function App() {
         {totalCartCount > 0 && (
           <button
             onClick={() => setIsCartOpen(true)}
-            className="p-3.5 rounded-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-2xl shadow-blue-500/50 border border-blue-300 relative group cursor-pointer animate-subtle-pulse"
+            className="p-3.5 rounded-full bg-[#243045] hover:bg-[#2e3d57] text-slate-100 shadow-2xl border border-slate-600 relative group cursor-pointer animate-subtle-pulse"
             title="Сагс үзэх"
           >
             <span className="text-xl">🛒</span>
-            <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 bg-amber-400 text-slate-950 text-xs font-black rounded-full flex items-center justify-center shadow-md">
+            <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 bg-[#8f805d] text-slate-950 text-xs font-black rounded-full flex items-center justify-center shadow-md">
               {totalCartCount}
             </span>
           </button>
@@ -581,7 +640,7 @@ export default function App() {
 
         <button
           onClick={handleScrollToTop}
-          className="p-3 rounded-full bg-blue-950/80 hover:bg-blue-900 text-blue-200 border border-blue-800 shadow-xl backdrop-blur-sm transition-all cursor-pointer"
+          className="p-3 rounded-full bg-[#0d1220]/90 hover:bg-[#171f33] text-slate-300 border border-slate-700/80 shadow-xl backdrop-blur-sm transition-all cursor-pointer"
           title="Дээш очих"
         >
           <ArrowUp className="w-4 h-4" />
@@ -594,10 +653,18 @@ export default function App() {
         onClose={() => setActiveStoreId(null)}
         onAddToCart={handleAddToCart}
         ownerMode={ownerMode}
+        lordMode={lordMode}
         maxItemsPerStore={MAX_ITEMS_PER_STORE}
         onAddNewItem={handleOpenAddNewItem}
         onEditItem={handleOpenEditItem}
+        onDeleteItem={handleDeleteItem}
         onRequestAdminLogin={() => setIsAdminLoginOpen(true)}
+        onRequestLordLogin={() => setIsLordLoginOpen(true)}
+        onExitLordMode={() => {
+          setLordCode(null);
+          setStoredLordCode(null);
+          showToast('Lord тохиргооноос гарлаа');
+        }}
       />
 
       {/* Admin Login Modal (Code: 54PPH1R3) */}
@@ -605,6 +672,13 @@ export default function App() {
         isOpen={isAdminLoginOpen}
         onClose={() => setIsAdminLoginOpen(false)}
         onSuccess={handleAdminLoginSuccess}
+      />
+
+      {/* Lord Settings Login Modal (Code: 0625) */}
+      <LordLoginModal
+        isOpen={isLordLoginOpen}
+        onClose={() => setIsLordLoginOpen(false)}
+        onSuccess={handleLordLoginSuccess}
       />
 
       {/* Admin-Only Notification Center */}
@@ -659,19 +733,27 @@ export default function App() {
       />
 
       {/* Footer */}
-      <footer className="mt-16 border-t border-blue-900/40 bg-[#040817] py-6 text-slate-400 text-xs">
+      <footer className="mt-16 border-t border-slate-800/80 bg-[#070a13] py-6 text-slate-400 text-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <DiamondLogo className="w-5 h-5" glow={false} />
-            <span className="font-semibold text-white">Sapphirely</span>
-            <span className="text-slate-500">•</span>
+            <span className="font-semibold text-slate-100">Sapphirely</span>
+            <span className="text-slate-600">•</span>
             <span>Саффир улсын их дэлгүүр</span>
           </div>
 
           <div className="flex items-center gap-4 text-slate-400">
+            {ownerMode && (
+              <button
+                onClick={handleToggleLordMode}
+                className="hover:text-[#c8ba96] transition-colors cursor-pointer"
+              >
+                {lordMode ? 'Lord горим (Гарах)' : 'Lord тохиргоо'}
+              </button>
+            )}
             <button
               onClick={handleToggleOwnerMode}
-              className="hover:text-amber-300 transition-colors cursor-pointer"
+              className="hover:text-[#c8ba96] transition-colors cursor-pointer"
             >
               {ownerMode ? 'Админ эрх (Гарах)' : 'Админ нэвтрэх'}
             </button>

@@ -9,9 +9,8 @@
   
   body {
     font-family: var(--font-sans);
-    background-color: #050811;
+    background-color: #06080f;
     color: #cbd5e1;
-    filter: saturate(0.3);
   }
 }
 
@@ -23,39 +22,39 @@
   font-family: 'Cormorant Garamond', Georgia, serif;
 }
 
-/* Custom royal scrollbar */
+/* Custom muted scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #030712;
+  background: #06080f;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e3a8a;
+  background: #222b3d;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2563eb;
+  background: #33415c;
 }
 
-/* Shimmer & glow effects */
+/* Subtle desaturated accents */
 .sapphire-glow {
-  box-shadow: 0 0 25px -5px rgba(59, 130, 246, 0.4), 0 0 10px -2px rgba(147, 197, 253, 0.3);
+  box-shadow: 0 0 20px -6px rgba(100, 116, 139, 0.25);
 }
 
 .sapphire-border-glow {
-  border-color: rgba(96, 165, 250, 0.4);
-  box-shadow: inset 0 0 20px rgba(37, 99, 235, 0.15), 0 0 15px rgba(59, 130, 246, 0.2);
+  border-color: rgba(148, 163, 184, 0.25);
+  box-shadow: inset 0 0 16px rgba(30, 41, 59, 0.2);
 }
 
 .gold-glow {
-  box-shadow: 0 0 20px -3px rgba(245, 158, 11, 0.4);
+  box-shadow: 0 0 16px -4px rgba(168, 152, 112, 0.25);
 }
 
 @keyframes pulseSubtle {
-  0%, 100% { opacity: 0.9; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.02); }
+  0%, 100% { opacity: 0.92; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.015); }
 }
 
 .animate-subtle-pulse {

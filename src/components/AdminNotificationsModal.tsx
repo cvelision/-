@@ -68,6 +68,12 @@ export const AdminNotificationsModal: React.FC<AdminNotificationsModalProps> = (
     'glass-item-',
     'porc-item-',
     'bake-item-',
+    'apparel-item-',
+    'food-item-',
+    'hunt-item-',
+    'mech-item-',
+    'jewel-item-',
+    'gem-item-',
   ];
   const customItems = notifications
     .map((n) => n.item)
@@ -102,14 +108,14 @@ export const AdminNotificationsModal: React.FC<AdminNotificationsModalProps> = (
     <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 sm:p-4 overflow-hidden">
       <div onClick={onClose} className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
 
-      <div className="relative w-full max-w-lg bg-[#070e24] border-0 sm:border border-blue-800/70 rounded-none sm:rounded-2xl shadow-2xl z-10 flex flex-col h-[100dvh] sm:h-auto sm:max-h-[85vh] overflow-hidden">
-        <div className="p-4 bg-[#091228] border-b border-blue-900/60 flex items-center justify-between">
+      <div className="relative w-full max-w-lg bg-[#090d17] border-0 sm:border border-slate-800 rounded-none sm:rounded-2xl shadow-2xl z-10 flex flex-col h-[100dvh] sm:h-auto sm:max-h-[85vh] overflow-hidden">
+        <div className="p-4 bg-[#0d1220] border-b border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/40 flex items-center justify-center">
-              <Bell className="w-4 h-4 text-amber-300" />
+            <div className="w-8 h-8 rounded-lg bg-[#1d1a14] border border-[#6e6246]/50 flex items-center justify-center">
+              <Bell className="w-4 h-4 text-[#c8ba96]" />
             </div>
             <div>
-              <h3 className="font-cinzel text-base font-bold text-white">
+              <h3 className="font-cinzel text-base font-bold text-slate-100">
                 Админ мэдэгдэл ({unreadCount} шинэ)
               </h3>
               <p className="text-[11px] text-slate-400">
@@ -126,9 +132,9 @@ export const AdminNotificationsModal: React.FC<AdminNotificationsModalProps> = (
         </div>
 
         {/* Browser push notification helper */}
-        <div className="px-4 py-2.5 bg-[#050b1c] border-b border-slate-800 flex items-center justify-between gap-2 text-xs">
+        <div className="px-4 py-2.5 bg-[#070a12] border-b border-slate-800 flex items-center justify-between gap-2 text-xs">
           {browserPermission === 'granted' ? (
-            <span className="text-emerald-400 flex items-center gap-1.5">
+            <span className="text-[#8fb3a5] flex items-center gap-1.5">
               <BellRing className="w-3.5 h-3.5" />
               Хөтөчийн шууд мэдэгдэл идэвхтэй байна
             </span>
@@ -144,7 +150,7 @@ export const AdminNotificationsModal: React.FC<AdminNotificationsModalProps> = (
               <button
                 type="button"
                 onClick={onRequestBrowserPermission}
-                className="px-2.5 py-1 rounded bg-blue-700 hover:bg-blue-600 text-white font-semibold whitespace-nowrap cursor-pointer"
+                className="px-2.5 py-1 rounded bg-[#27344a] hover:bg-[#32425c] border border-slate-600/70 text-slate-100 font-semibold whitespace-nowrap cursor-pointer"
               >
                 Мэдэгдэл асаах
               </button>
@@ -167,25 +173,25 @@ export const AdminNotificationsModal: React.FC<AdminNotificationsModalProps> = (
                 key={entry.item.id}
                 className={`p-3 rounded-xl border flex items-center gap-3 transition-colors ${
                   entry.isUnread
-                    ? 'bg-blue-950/50 border-amber-500/50'
-                    : 'bg-[#050a18] border-slate-800'
+                    ? 'bg-[#121723] border-[#6e6246]/60'
+                    : 'bg-[#070a12] border-slate-800'
                 }`}
               >
                 <img
                   src={entry.item.imageUrl}
                   alt={entry.item.name}
-                  className="w-12 h-12 rounded-lg object-contain bg-[#020611] border border-slate-800 shrink-0"
+                  className="w-12 h-12 rounded-lg object-contain bg-[#04060c] border border-slate-800 shrink-0"
                 />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-1.5">
                     {entry.isUnread && (
-                      <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                      <span className="w-2 h-2 rounded-full bg-[#c8ba96] shrink-0" />
                     )}
                     <p className="text-xs font-bold text-slate-100 truncate">
                       {entry.item.name}
                     </p>
                   </div>
-                  <p className="text-[11px] text-blue-300 truncate">
+                  <p className="text-[11px] text-slate-400 truncate">
                     {entry.storeName} • 🪙 {entry.item.priceCoins.toLocaleString()} Зоос
                   </p>
                   <p className="text-[10px] text-slate-500 mt-0.5">
@@ -209,13 +215,13 @@ export const AdminNotificationsModal: React.FC<AdminNotificationsModalProps> = (
         </div>
 
         {/* Footer */}
-        <div className="p-3 bg-[#050a18] border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
+        <div className="p-3 bg-[#070a12] border-t border-slate-800 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={onMarkAllRead}
               disabled={unreadCount === 0}
-              className="px-3 py-1.5 rounded bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-xs text-amber-300 flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-1.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-800 disabled:opacity-40 text-xs text-[#c8ba96] flex items-center gap-1.5 cursor-pointer"
             >
               <CheckCheck className="w-3.5 h-3.5" />
               <span>Бүгдийг уншсан болгох</span>
@@ -224,12 +230,12 @@ export const AdminNotificationsModal: React.FC<AdminNotificationsModalProps> = (
               type="button"
               onClick={handleCopyItemsCode}
               disabled={notifications.length === 0}
-              className="px-3 py-1.5 rounded bg-blue-950 hover:bg-blue-900 disabled:opacity-40 border border-blue-800/70 text-xs text-blue-200 flex items-center gap-1.5 cursor-pointer"
+              className="px-3 py-1.5 rounded bg-[#141b2b] hover:bg-[#1c263b] disabled:opacity-40 border border-slate-700 text-xs text-slate-200 flex items-center gap-1.5 cursor-pointer"
             >
               {copiedCode ? (
                 <>
-                  <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-300">Хуулагдлаа</span>
+                  <Check className="w-3.5 h-3.5 text-[#8fb3a5]" />
+                  <span className="text-[#8fb3a5]">Хуулагдлаа</span>
                 </>
               ) : (
                 <>

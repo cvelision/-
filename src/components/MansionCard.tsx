@@ -39,7 +39,7 @@ export const MansionCard: React.FC<MansionCardProps> = ({
               e.stopPropagation();
               onAddNewItem(store);
             }}
-            className="text-[11px] text-amber-300 hover:text-amber-200 flex items-center gap-1 cursor-pointer"
+            className="text-[11px] text-[#c8ba96] hover:text-[#dfd4b6] flex items-center gap-1 cursor-pointer"
             title="Бараа нэмэх"
           >
             <Plus className="w-3 h-3" />

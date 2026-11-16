@@ -135,6 +135,10 @@
           "type": "number",
           "description": "Version number of built-in seeded catalog items"
         },
+        "retiredIds": {
+          "type": "array",
+          "description": "Built-in item IDs deleted by Lord mode"
+        },
         "updatedAt": {
           "type": "string",
           "format": "date-time",

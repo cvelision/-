@@ -40,10 +40,10 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div onClick={onClose} className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
 
-      <div className="relative w-full max-w-sm bg-[#070e24] border border-slate-800 rounded-xl p-5 shadow-2xl z-10">
+      <div className="relative w-full max-w-sm bg-[#0b101b] border border-slate-800 rounded-xl p-5 shadow-2xl z-10">
         <div className="flex items-center justify-between pb-3 border-b border-slate-800">
           <div className="flex items-center gap-2">
-            <Lock className="w-4 h-4 text-amber-300" />
+            <Lock className="w-4 h-4 text-[#c8ba96]" />
             <h3 className="font-cinzel text-base font-bold text-slate-100">
               Админ эрхээр нэвтрэх
             </h3>
@@ -57,8 +57,8 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         </div>
 
         <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          <p className="text-xs text-slate-300">
-            Бараа нэмэх, засах, устгахын тулд админ эрхийн кодоо оруулна уу. Оруулсан бараа бүх хэрэглэгчид шууд хадгалагдана.
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Бараа нэмэх, засахын тулд админ эрхийн кодоо оруулна уу. Оруулсан бараа бүх хэрэглэгчид шууд хадгалагдана.
           </p>
 
           <div>
@@ -66,7 +66,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
               Админ код:
             </label>
             <div className="relative">
-              <KeyRound className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <KeyRound className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="password"
                 value={codeInput}
@@ -76,13 +76,13 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 }}
                 placeholder="Кодоо оруулна уу..."
                 autoFocus
-                className="w-full pl-9 pr-3 py-2 bg-[#050a18] border border-slate-700 rounded-lg text-sm text-white placeholder-slate-500 focus:outline-none focus:border-amber-400"
+                className="w-full pl-9 pr-3 py-2 bg-[#060911] border border-slate-700 rounded-lg text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-slate-500"
               />
             </div>
           </div>
 
           {error && (
-            <div className="p-2.5 rounded bg-red-950/70 border border-red-700/60 text-xs text-red-200">
+            <div className="p-2.5 rounded bg-[#2d181c] border border-[#5e343c] text-xs text-[#dfb3ba]">
               {error}
             </div>
           )}
@@ -91,13 +91,13 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-xs text-slate-300 cursor-pointer"
+              className="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 cursor-pointer"
             >
               Цуцлах
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
+              className="px-4 py-2 rounded-lg bg-[#8f805d] hover:bg-[#a1916c] text-slate-950 font-bold text-xs flex items-center gap-1.5 cursor-pointer"
             >
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>Нэвтрэх</span>

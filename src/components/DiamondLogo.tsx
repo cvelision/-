@@ -13,7 +13,7 @@ export const DiamondLogo: React.FC<DiamondLogoProps> = ({
   return (
     <div className={`relative inline-flex items-center justify-center ${glow ? 'group' : ''}`}>
       {glow && (
-        <div className="absolute inset-0 bg-blue-500/30 blur-md rounded-full group-hover:bg-cyan-400/50 transition-all duration-500 animate-pulse" />
+        <div className="absolute inset-0 bg-slate-500/20 blur-md rounded-full group-hover:bg-slate-400/25 transition-all duration-500" />
       )}
       <svg
         viewBox="0 0 100 100"
@@ -23,19 +23,19 @@ export const DiamondLogo: React.FC<DiamondLogoProps> = ({
       >
         <defs>
           <linearGradient id="sapphireGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#60a5fa" />
-            <stop offset="30%" stopColor="#3b82f6" />
-            <stop offset="70%" stopColor="#1d4ed8" />
-            <stop offset="100%" stopColor="#0f172a" />
+            <stop offset="0%" stopColor="#7a8ea8" />
+            <stop offset="35%" stopColor="#4c5f7a" />
+            <stop offset="70%" stopColor="#2c3a4f" />
+            <stop offset="100%" stopColor="#141b28" />
           </linearGradient>
           <linearGradient id="facetLight" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor="#93c5fd" stopOpacity="0.9" />
-            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.4" />
+            <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.85" />
+            <stop offset="100%" stopColor="#475569" stopOpacity="0.4" />
           </linearGradient>
           <linearGradient id="goldRim" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#fef08a" />
-            <stop offset="50%" stopColor="#f59e0b" />
-            <stop offset="100%" stopColor="#b45309" />
+            <stop offset="0%" stopColor="#d4c7a5" />
+            <stop offset="50%" stopColor="#9c8e6c" />
+            <stop offset="100%" stopColor="#6b6046" />
           </linearGradient>
         </defs>
 
@@ -52,7 +52,7 @@ export const DiamondLogo: React.FC<DiamondLogoProps> = ({
         <polygon
           points="35,16 65,16 75,32 25,32"
           fill="url(#facetLight)"
-          stroke="#93c5fd"
+          stroke="#94a3b8"
           strokeWidth="1.5"
           strokeLinejoin="round"
         />
@@ -60,48 +60,48 @@ export const DiamondLogo: React.FC<DiamondLogoProps> = ({
         {/* Side crown facets */}
         <polygon
           points="35,16 25,32 6,50"
-          fill="#2563eb"
-          fillOpacity="0.8"
-          stroke="#60a5fa"
+          fill="#3f5069"
+          fillOpacity="0.85"
+          stroke="#7a8ea8"
           strokeWidth="1.2"
         />
         <polygon
           points="65,16 75,32 94,50"
-          fill="#1d4ed8"
+          fill="#334155"
           fillOpacity="0.85"
-          stroke="#60a5fa"
+          stroke="#7a8ea8"
           strokeWidth="1.2"
         />
 
         {/* Center brilliant pavilion facets */}
         <polygon
           points="25,32 50,92 75,32"
-          fill="#1e40af"
-          fillOpacity="0.75"
-          stroke="#93c5fd"
+          fill="#2d3b4f"
+          fillOpacity="0.8"
+          stroke="#94a3b8"
           strokeWidth="1.2"
         />
         <polygon
           points="6,50 25,32 50,92"
-          fill="#1e3a8a"
+          fill="#1e293b"
           fillOpacity="0.9"
-          stroke="#3b82f6"
+          stroke="#64748b"
           strokeWidth="1"
         />
         <polygon
           points="94,50 75,32 50,92"
-          fill="#0c4a6e"
+          fill="#182230"
           fillOpacity="0.9"
-          stroke="#3b82f6"
+          stroke="#64748b"
           strokeWidth="1"
         />
 
-        {/* Brilliant reflection sparkle */}
-        <circle cx="38" cy="24" r="2.5" fill="#ffffff" />
+        {/* Subtle reflection sparkle */}
+        <circle cx="38" cy="24" r="2.2" fill="#e2e8f0" />
         <path
           d="M 50 20 L 52 26 L 58 28 L 52 30 L 50 36 L 48 30 L 42 28 L 48 26 Z"
-          fill="#ffffff"
-          opacity="0.85"
+          fill="#e2e8f0"
+          opacity="0.75"
         />
       </svg>
     </div>

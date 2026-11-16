@@ -33,9 +33,12 @@ service cloud.firestore {
       return data.keys().hasAll(['code', 'itemId', 'action', 'createdAt']) &&
         data.keys().hasOnly(['code', 'itemId', 'action', 'createdAt']) &&
         data.code is string && data.code.size() >= 1 && data.code.size() <= 64 &&
-        data.code == '54PPH1R3' &&
         isValidId(data.itemId) &&
-        data.action is string && data.action in ['create', 'update'] &&
+        data.action is string &&
+        (
+          (data.action in ['create', 'update'] && data.code in ['54PPH1R3', '0625']) ||
+          (data.action == 'delete' && data.code == '0625')
+        ) &&
         data.createdAt == request.time;
     }
 
@@ -58,11 +61,16 @@ service cloud.firestore {
 
     function isValidCatalogMeta(data) {
       return data.keys().hasAll(['version', 'lastActionId', 'updatedAt']) &&
-        data.keys().hasOnly(['version', 'lastActionId', 'updatedAt', 'librarySeeded', 'seededVersion']) &&
+        data.keys().hasOnly(['version', 'lastActionId', 'updatedAt', 'librarySeeded', 'seededVersion', 'retiredIds']) &&
         data.version is number && data.version > 0 &&
         isValidId(data.lastActionId) &&
         (!data.keys().hasAny(['librarySeeded']) || data.librarySeeded is bool) &&
         (!data.keys().hasAny(['seededVersion']) || data.seededVersion is number) &&
+        (!data.keys().hasAny(['retiredIds']) || (
+          data.retiredIds is list &&
+          data.retiredIds.size() <= 500 &&
+          (data.retiredIds.size() == 0 || (data.retiredIds[0] is string && data.retiredIds[0].size() >= 1 && data.retiredIds[0].size() <= 128))
+        )) &&
         data.updatedAt == request.time;
     }
 
@@ -72,7 +80,17 @@ service cloud.firestore {
         existsAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)) &&
         getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.itemId == itemId &&
         getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.action == expectedAction &&
-        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.code == '54PPH1R3' &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.code in ['54PPH1R3', '0625'] &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.createdAt == request.time;
+    }
+
+    function hasValidAtomicLordDeleteAction(itemId) {
+      return isValidId(incoming().lastActionId) &&
+        !exists(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)) &&
+        existsAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)) &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.itemId == itemId &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.action == 'delete' &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.code == '0625' &&
         getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.createdAt == request.time;
     }
 
@@ -80,7 +98,16 @@ service cloud.firestore {
       return isValidId(incoming().lastActionId) &&
         !exists(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)) &&
         existsAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)) &&
-        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.code == '54PPH1R3' &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.code in ['54PPH1R3', '0625'] &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.createdAt == request.time;
+    }
+
+    function hasValidMetaAtomicLordAction() {
+      return isValidId(incoming().lastActionId) &&
+        !exists(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)) &&
+        existsAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)) &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.action == 'delete' &&
+        getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.code == '0625' &&
         getAfter(/databases/$(database)/documents/adminActions/$(incoming().lastActionId)).data.createdAt == request.time;
     }
 
@@ -98,9 +125,14 @@ service cloud.firestore {
     match /meta/{docId} {
       allow get: if docId == 'catalog';
       allow list, delete: if false;
-      allow create, update: if docId == 'catalog' &&
+      allow create: if docId == 'catalog' &&
         isValidCatalogMeta(incoming()) &&
-        (isAdmin() || hasValidMetaAtomicAdminAction());
+        (isAdmin() || hasValidMetaAtomicAdminAction()) &&
+        (!incoming().keys().hasAny(['retiredIds']) || incoming().retiredIds.size() == 0 || isAdmin() || hasValidMetaAtomicLordAction());
+      allow update: if docId == 'catalog' &&
+        isValidCatalogMeta(incoming()) &&
+        (isAdmin() || hasValidMetaAtomicAdminAction()) &&
+        (!incoming().diff(existing()).affectedKeys().hasAny(['retiredIds']) || isAdmin() || hasValidMetaAtomicLordAction());
     }
 
     match /items/{itemId} {
@@ -121,9 +153,19 @@ service cloud.firestore {
         incoming().storeId == existing().storeId &&
         incoming().createdAt == existing().createdAt &&
         incoming().updatedAt == request.time &&
-        incoming().deleted == false &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'priceCoins', 'imageUrl', 'stock', 'featured', 'lastActionId', 'updatedAt']) &&
-        (isAdmin() || hasValidAtomicAdminAction(itemId, 'update'));
+        existing().deleted == false &&
+        (
+          (
+            incoming().deleted == false &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['name', 'description', 'priceCoins', 'imageUrl', 'stock', 'featured', 'lastActionId', 'updatedAt']) &&
+            (isAdmin() || hasValidAtomicAdminAction(itemId, 'update'))
+          ) ||
+          (
+            incoming().deleted == true &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['deleted', 'lastActionId', 'updatedAt']) &&
+            (isAdmin() || hasValidAtomicLordDeleteAction(itemId))
+          )
+        );
 
       allow delete: if false;
     }
